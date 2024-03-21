@@ -60,8 +60,11 @@ $lang['Nominet.row_meta.sandbox'] = 'Sandbox';
 // Errors
 $lang['Nominet.!error.module_row.missing'] = 'An internal error occurred. The module row is unavailable.';
 $lang['Nominet.!error.domain.valid'] = 'The given domain is invalid.';
-$lang['Nominet.!error.ns.valid'] = 'One or more Name Servers are invalid.';
-$lang['Nominet.!error.ns.count'] = 'At least two Name Servers must be provided.';
+$lang['Nominet.!error.ns1.valid'] = 'Invalid Name Server 1';
+$lang['Nominet.!error.ns2.valid'] = 'Invalid Name Server 2';
+$lang['Nominet.!error.ns3.valid'] = 'Invalid Name Server 3';
+$lang['Nominet.!error.ns4.valid'] = 'Invalid Name Server 4';
+$lang['Nominet.!error.ns5.valid'] = 'Invalid Name Server 5';
 
 
 // Service info
