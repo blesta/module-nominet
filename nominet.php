@@ -595,14 +595,15 @@ class Nominet extends RegistrarModule
         $status = 'pending'
     ) {
         if (($row = $this->getModuleRow())) {
-            // Format input
-            $vars = $this->getFieldsFromInput($vars, $package);
 
             // Validate service
             $this->validateService($package, $vars);
             if ($this->Input->errors()) {
                 return;
             }
+            
+            // Format input
+            $vars = $this->getFieldsFromInput($vars, $package);
 
             // Only provision the service if 'use_module' is true
             if ($vars['use_module'] == 'true') {
@@ -683,13 +684,13 @@ class Nominet extends RegistrarModule
         if (($row = $this->getModuleRow())) {
             $service_fields = $this->serviceFieldsToObject($service->fields);
 
-            // Format input
-            $vars = $this->getFieldsFromInput($vars, $package);
-
             $this->validateService($package, $vars, true);
             if ($this->Input->errors()) {
                 return;
             }
+
+            // Format input
+            $vars = $this->getFieldsFromInput($vars, $package);
 
             // Only update the service if 'use_module' is true
             if ($vars['use_module'] == 'true') {
@@ -870,7 +871,7 @@ class Nominet extends RegistrarModule
 
         // Remove validation rules for optional fields
         for ($i = 1; $i <= 5; $i++) {
-            if (isset($vars['ns' . $i]) && empty($vars['ns' . $i])) {
+            if (empty($vars['ns' . $i])) {
                 unset($vars['ns' . $i]);
             }
         }
@@ -1804,6 +1805,7 @@ class Nominet extends RegistrarModule
      */
     public function registerDomain($domain, $module_row_id = null, array $vars = [])
     {
+        Loader::loadHelpers($this, ['Html']);
         $row = $this->getModuleRow($module_row_id);
         $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
 
@@ -1825,7 +1827,7 @@ class Nominet extends RegistrarModule
             );
             $contact->setPassword($this->generatePassword());
 
-            $response = $this->request($api, Metaregistrar\EPP\eppCreateContactRequest($contact));
+            $response = $this->request($api, new Metaregistrar\EPP\eppCreateContactRequest($contact));
             if ($response) {
                 $contact_id = $response->getContactId();
             }
@@ -1857,6 +1859,9 @@ class Nominet extends RegistrarModule
         // Set nameservers
         if (isset($vars['ns']) && is_array($vars['ns'])) {
             foreach ($vars['ns'] as $nameserver) {
+                if (empty($nameserver)) {
+                    continue;
+                }
                 $register->addHost(new Metaregistrar\EPP\eppHost($nameserver));
             }
         }
@@ -1864,7 +1869,7 @@ class Nominet extends RegistrarModule
         // Send request
         $response = $this->request($api, new Metaregistrar\EPP\eppCreateDomainRequest($register));
 
-        return !empty($response->getDomainCreateDate());
+        return $response && !empty($response->getDomainCreateDate());
     }
 
     /**
@@ -2101,7 +2106,7 @@ class Nominet extends RegistrarModule
         foreach ($nameservers as $nameserver) {
             if ($nameserver instanceof \Metaregistrar\EPP\eppHost) {
                 $ns[] = [
-                    'url' => $nameserver->getHostname(),
+                    'url' => trim($nameserver->getHostname(), '.'),
                     'ips' => empty($nameserver->getIpAddresses())
                         ? $nameserver->getIpAddresses()
                         : gethostbyname($nameserver->getIpAddresses())
@@ -2213,6 +2218,7 @@ class Nominet extends RegistrarModule
      */
     public function setDomainContacts($domain, array $vars = [], $module_row_id = null)
     {
+        Loader::loadHelpers($this, ['Html']);
         $row = $this->getModuleRow($module_row_id);
         $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
 
@@ -2229,7 +2235,7 @@ class Nominet extends RegistrarModule
 
         // Set contact type
         foreach ($vars as $key => $contact) {
-            switch ($contact['external_id']) {
+            switch ($key) {
                 case 'admin':
                     $contact['external_id'] = Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_ADMIN;
                     break;
@@ -2245,51 +2251,79 @@ class Nominet extends RegistrarModule
             }
         }
 
-        // Delete existing domain contacts
-        $delete = new Metaregistrar\EPP\eppDomain($domain);
-        if (!empty($vars)) {
-            foreach ($vars as $contact) {
-                $old = $info->getDomainContact($contact['external_id']);
-                $delete->addContact(new Metaregistrar\EPP\eppContactHandle($old, $contact['external_id']));
+        try {
+            // Delete existing domain contacts
+            $delete = null;
+            if (!empty($vars)) {
+                foreach ($vars as $key => $contact) {
+                    $old = $info->getDomainContact($contact['external_id']);
+                    if (empty($old)) {
+                        continue;
+                    } elseif ($delete == null) {
+                        $delete = new Metaregistrar\EPP\eppDomain($domain);
+                    }
+                    $delete->addContact(new Metaregistrar\EPP\eppContactHandle($old->getId(), $key));
+                }
             }
-        }
 
-        // Create contacts
-        foreach ($vars as $contact) {
-            $epp_contact = new Metaregistrar\EPP\eppContact(
-                new Metaregistrar\EPP\eppContactPostalInfo(
-                    $this->Html->concat(' ', ($contact['first_name'] ?? ''), ($contact['last_name'] ?? '')),
-                    $contact['city'] ?? '',
-                    $contact['country'] ?? '',
-                    $contact['company'] ?? '',
-                    $contact['address1'] ?? '',
-                    $contact['state'] ?? '',
-                    $contact['zip'] ?? ''
-                ),
-                $contact['email'] ?? '',
-                $contact['phone'] ?? ''
+            // Create contacts
+            foreach ($vars as &$contact) {
+                if (empty($contact['first_name']) && empty($contact['last_name'])) {
+                    continue;
+                }
+                ##
+                # TODO format contact phone number
+                ##
+                $epp_contact = new Metaregistrar\EPP\eppContact(
+                    new Metaregistrar\EPP\eppContactPostalInfo(
+                        $this->Html->concat(' ', ($contact['first_name'] ?? ''), ($contact['last_name'] ?? '')),
+                        $contact['city'] ?? '',
+                        $contact['country'] ?? '',
+                        $contact['company'] ?? '',
+                        $contact['address1'] ?? '',
+                        $contact['state'] ?? '',
+                        $contact['zip'] ?? ''
+                    ),
+                    $contact['email'] ?? '',
+                    $contact['phone'] ?? ''
+                );
+                $epp_contact->setPassword($this->generatePassword());
+                $response = $api->request(new Metaregistrar\EPP\eppCreateContactRequest($epp_contact));
+
+                if ($response->getContactId()) {
+                    $contact['id'] = $response->getContactId();
+                }
+            }
+
+            // Add new domain contacts
+            $add = new Metaregistrar\EPP\eppDomain($domain);
+            if (!empty($vars)) {
+                foreach ($vars as $key => $contact) {
+                    if (empty($contact['id'])) {
+                        continue;
+                    }
+                    $add->addContact(new Metaregistrar\EPP\eppContactHandle($contact['id'], $key));
+                }
+            }
+
+            // Send request to the EPP server
+            $response = $this->request(
+                $api,
+                new Metaregistrar\EPP\eppUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), $add, $delete)
             );
-            $epp_contact->setPassword($this->generatePassword());
-            $response = $api->request(new Metaregistrar\EPP\eppCreateContactRequest($epp_contact));
-
-            if ($response->getContactId()) {
-                $contact['id'] = $response->getContactId();
+        } catch (Throwable $e) {
+            if (isset($this->Input)) {
+                $this->Input->setErrors(['exception' => ['message' => $e->getMessage()]]);
             }
-        }
 
-        // Add new domain contacts
-        $add = new Metaregistrar\EPP\eppDomain($domain);
-        if (!empty($vars)) {
-            foreach ($vars as $contact) {
-                $add->addContact(new Metaregistrar\EPP\eppContactHandle($contact['id'], $contact['external_id']));
-            }
-        }
+            $this->log(
+                $api->getUsername() . '|updateContacts',
+                json_encode(['exception' => $e->getMessage()]),
+                'output'
+            );
 
-        // Send request to the EPP server
-        $response = $this->request(
-            $api,
-            new Metaregistrar\EPP\eppUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), $add, $delete)
-        );
+            return false;
+        }
 
         return $response !== false;
     }
@@ -2338,6 +2372,9 @@ class Nominet extends RegistrarModule
         $add = new Metaregistrar\EPP\eppDomain($domain);
         if (!empty($vars)) {
             foreach ($vars as $nameserver) {
+                if (empty($nameserver)) {
+                    continue;
+                }
                 $add->addHost(new Metaregistrar\EPP\eppHost($nameserver));
             }
         }
