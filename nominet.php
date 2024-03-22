@@ -1812,6 +1812,10 @@ class Nominet extends RegistrarModule
         // Add contact
         $contact_id = null;
         if (isset($vars['contact'])) {
+            if (empty($vars['contact']['company'])) {
+                $vars['contact']['company'] = null;
+            }
+
             $contact = new Metaregistrar\EPP\eppContact(
                 new Metaregistrar\EPP\eppContactPostalInfo(
                     $this->Html->concat(' ', ($vars['contact']['first_name'] ?? ''), ($vars['contact']['last_name'] ?? '')),
@@ -1823,7 +1827,7 @@ class Nominet extends RegistrarModule
                     $vars['contact']['zip'] ?? ''
                 ),
                 $vars['contact']['email'] ?? '',
-                $vars['contact']['phone'] ?? ''
+                $this->formatPhone($contact['phone'] ?? '', $contact['country'])
             );
             $contact->setPassword($this->generatePassword());
 
@@ -2271,9 +2275,11 @@ class Nominet extends RegistrarModule
                 if (empty($contact['first_name']) && empty($contact['last_name'])) {
                     continue;
                 }
-                ##
-                # TODO format contact phone number
-                ##
+
+                if (empty($contact['company'])) {
+                    $contact['company'] = null;
+                }
+
                 $epp_contact = new Metaregistrar\EPP\eppContact(
                     new Metaregistrar\EPP\eppContactPostalInfo(
                         $this->Html->concat(' ', ($contact['first_name'] ?? ''), ($contact['last_name'] ?? '')),
@@ -2285,7 +2291,7 @@ class Nominet extends RegistrarModule
                         $contact['zip'] ?? ''
                     ),
                     $contact['email'] ?? '',
-                    $contact['phone'] ?? ''
+                    $this->formatPhone($contact['phone'] ?? '', $contact['country'])
                 );
                 $epp_contact->setPassword($this->generatePassword());
                 $response = $api->request(new Metaregistrar\EPP\eppCreateContactRequest($epp_contact));
