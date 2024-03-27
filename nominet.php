@@ -2292,7 +2292,8 @@ class Nominet extends RegistrarModule
                     } elseif ($delete == null) {
                         $delete = new Metaregistrar\EPP\eppDomain($domain);
                     }
-                    $delete->addContact(new Metaregistrar\EPP\eppContactHandle($old->getId(), $key));
+                    
+                    $delete->addContact(new Metaregistrar\EPP\eppContactHandle($old->getId(), $contact['external_id']));
                 }
             }
 
@@ -2329,7 +2330,6 @@ class Nominet extends RegistrarModule
                     $contact['id'] = $response->getContactId();
                 }
             }
-            print_r($vars);
 
             // Add new domain contacts
             $add = new Metaregistrar\EPP\eppDomain($domain);
@@ -2338,10 +2338,10 @@ class Nominet extends RegistrarModule
                     if (empty($contact['id'])) {
                         continue;
                     }
-                    $add->addContact(new Metaregistrar\EPP\eppContactHandle($contact['id'], $key));
+                    
+                    $add->addContact(new Metaregistrar\EPP\eppContactHandle($contact['id'], $contact['external_id']));
                 }
             }
-            print_r($add);
 
             // Send request to the EPP server
             $response = $this->request(
