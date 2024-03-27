@@ -1156,7 +1156,13 @@ class Nominet extends RegistrarModule
 
         // Update whois contact
         if (!empty($post)) {
-            $this->setDomainContacts($service_fields->domain, $post, $service->module_row_id);
+            $contacts = [];
+            foreach ($post as $external_id => $contact) {
+                $contact['external_id'] = $external_id;
+                $contacts[] = $contact;
+            }
+
+            $this->setDomainContacts($service_fields->domain, $contacts, $service->module_row_id);
             $vars = (object) $post;
         }
 
@@ -1222,7 +1228,13 @@ class Nominet extends RegistrarModule
 
         // Update whois contact
         if (!empty($post)) {
-            $this->setDomainContacts($service_fields->domain, $post, $service->module_row_id);
+            $contacts = [];
+            foreach ($post as $external_id => $contact) {
+                $contact['external_id'] = $external_id;
+                $contacts[] = $contact;
+            }
+
+            $this->setDomainContacts($service_fields->domain, $contacts, $service->module_row_id);
             $vars = (object) $post;
         }
 
@@ -1281,7 +1293,7 @@ class Nominet extends RegistrarModule
 
             if (empty($nameservers)) {
                 $i = 1;
-                foreach ($package->meta->ns as $ns) {
+                foreach ($package->meta->ns ?? [] as $ns) {
                     $vars->{'ns' . $i++} = $ns;
                 }
             } else {
@@ -1299,7 +1311,14 @@ class Nominet extends RegistrarModule
 
         // Update domain nameservers
         if (!empty($post)) {
-            $this->setDomainNameservers($service_fields->domain, $service->module_row_id, $post['ns']);
+            $ns = [];
+            for ($i = 1; $i <= 5; $i++) {
+                if (isset($post['ns' . $i]) && !empty($post['ns' . $i])) {
+                    $ns[] = $post['ns' . $i];
+                }
+            }
+
+            $this->setDomainNameservers($service_fields->domain, $service->module_row_id, $ns);
             $vars = (object) $post;
         }
 
@@ -1347,7 +1366,7 @@ class Nominet extends RegistrarModule
 
             if (empty($nameservers)) {
                 $i = 1;
-                foreach ($package->meta->ns as $ns) {
+                foreach ($package->meta->ns ?? [] as $ns) {
                     $vars->{'ns' . $i++} = $ns;
                 }
             } else {
@@ -1365,7 +1384,14 @@ class Nominet extends RegistrarModule
 
         // Update domain nameservers
         if (!empty($post)) {
-            $this->setDomainNameservers($service_fields->domain, $service->module_row_id, $post['ns']);
+            $ns = [];
+            for ($i = 1; $i <= 5; $i++) {
+                if (isset($post['ns' . $i]) && !empty($post['ns' . $i])) {
+                    $ns[] = $post['ns' . $i];
+                }
+            }
+
+            $this->setDomainNameservers($service_fields->domain, $service->module_row_id, $ns);
             $vars = (object) $post;
         }
 
@@ -1824,7 +1850,10 @@ class Nominet extends RegistrarModule
                     $vars['contact']['company'] ?? '',
                     $vars['contact']['address1'] ?? '',
                     $vars['contact']['state'] ?? '',
-                    $vars['contact']['zip'] ?? ''
+                    $vars['contact']['zip'] ?? '',
+                    ($vars['contact']['country'] ?? 'UK') == 'UK'
+                        ? Metaregistrar\EPP\eppContact::TYPE_LOC
+                        : Metaregistrar\EPP\eppContact::TYPE_INT
                 ),
                 $vars['contact']['email'] ?? '',
                 $this->formatPhone($contact['phone'] ?? '', $contact['country'])
@@ -2005,7 +2034,7 @@ class Nominet extends RegistrarModule
         // Format contacts
         $types = ['admin', 'tech', 'billing'];
         $formatted_contacts = [];
-        foreach ($contacts as $contact) {
+        foreach ($contacts ?? [] as $contact) {
             if (!in_array($contact->getContactType(), $types)) {
                 continue;
             }
@@ -2107,7 +2136,7 @@ class Nominet extends RegistrarModule
 
         // Format nameservers
         $ns = [];
-        foreach ($nameservers as $nameserver) {
+        foreach ($nameservers ?? [] as $nameserver) {
             if ($nameserver instanceof \Metaregistrar\EPP\eppHost) {
                 $ns[] = [
                     'url' => trim($nameserver->getHostname(), '.'),
@@ -2249,9 +2278,6 @@ class Nominet extends RegistrarModule
                 case 'billing':
                     $contact['external_id'] = Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_BILLING;
                     break;
-                default:
-                    unset($vars[$key]);
-                    break;
             }
         }
 
@@ -2288,7 +2314,10 @@ class Nominet extends RegistrarModule
                         $contact['company'] ?? '',
                         $contact['address1'] ?? '',
                         $contact['state'] ?? '',
-                        $contact['zip'] ?? ''
+                        $contact['zip'] ?? '',
+                        ($vars['contact']['country'] ?? 'UK') == 'UK'
+                            ? Metaregistrar\EPP\eppContact::TYPE_LOC
+                            : Metaregistrar\EPP\eppContact::TYPE_INT
                     ),
                     $contact['email'] ?? '',
                     $this->formatPhone($contact['phone'] ?? '', $contact['country'])
@@ -2300,6 +2329,7 @@ class Nominet extends RegistrarModule
                     $contact['id'] = $response->getContactId();
                 }
             }
+            print_r($vars);
 
             // Add new domain contacts
             $add = new Metaregistrar\EPP\eppDomain($domain);
@@ -2311,6 +2341,7 @@ class Nominet extends RegistrarModule
                     $add->addContact(new Metaregistrar\EPP\eppContactHandle($contact['id'], $key));
                 }
             }
+            print_r($add);
 
             // Send request to the EPP server
             $response = $this->request(
@@ -2367,16 +2398,18 @@ class Nominet extends RegistrarModule
         );
 
         // Delete current domain nameservers
-        $delete = new Metaregistrar\EPP\eppDomain($domain);
+        $delete = null;
         if (is_array($nameservers)) {
+            $delete = new Metaregistrar\EPP\eppDomain($domain);
             foreach ($nameservers as $nameserver) {
                 $delete->addHost(new Metaregistrar\EPP\eppHost($nameserver->getHostname()));
             }
         }
 
         // Add new domain nameservers
-        $add = new Metaregistrar\EPP\eppDomain($domain);
+        $add = null;
         if (!empty($vars)) {
+            $add = new Metaregistrar\EPP\eppDomain($domain);
             foreach ($vars as $nameserver) {
                 if (empty($nameserver)) {
                     continue;
@@ -2631,7 +2664,7 @@ class Nominet extends RegistrarModule
         // Send request to the EPP server
         $response = $this->request(
             $api,
-            new Metaregistrar\EPP\eppDnssecUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), $add, $remove)
+            new Metaregistrar\EPP\eppDnssecUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), null, $remove)
         );
 
         return $response !== false;
