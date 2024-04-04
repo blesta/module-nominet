@@ -1173,13 +1173,9 @@ class Nominet extends RegistrarModule
             $this->Form->collapseObjectArray($this->Countries->getList(), ['name', 'alt_name'], 'alpha2', ' - ')
         );
 
-        // Set contact types
-        $types = ['admin', 'tech', 'billing'];
-
         $this->view->set('service_fields', $service_fields);
         $this->view->set('service_id', $service->id);
         $this->view->set('client_id', $service->client_id);
-        $this->view->set('types', $types);
         $this->view->set('whois_fields', Configure::get('Nominet.contact_fields'));
         $this->view->set('vars', ($vars ?? new stdClass()));
 
@@ -1245,13 +1241,9 @@ class Nominet extends RegistrarModule
             $this->Form->collapseObjectArray($this->Countries->getList(), ['name', 'alt_name'], 'alpha2', ' - ')
         );
 
-        // Set contact types
-        $types = ['admin', 'tech', 'billing'];
-
         $this->view->set('service_fields', $service_fields);
         $this->view->set('service_id', $service->id);
         $this->view->set('client_id', $service->client_id);
-        $this->view->set('types', $types);
         $this->view->set('whois_fields', Configure::get('Nominet.contact_fields'));
         $this->view->set('vars', ($vars ?? new stdClass()));
 
@@ -1872,19 +1864,7 @@ class Nominet extends RegistrarModule
         $register->addContact(
             new Metaregistrar\EPP\eppContactHandle(
                 $contact_id,
-                Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_ADMIN
-            )
-        );
-        $register->addContact(
-            new Metaregistrar\EPP\eppContactHandle(
-                $contact_id,
-                Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_TECH
-            )
-        );
-        $register->addContact(
-            new Metaregistrar\EPP\eppContactHandle(
-                $contact_id,
-                Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_BILLING
+                Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_REGISTRANT
             )
         );
         $register->setAuthorisationCode($this->generatePassword(6, 8));
@@ -2019,28 +1999,29 @@ class Nominet extends RegistrarModule
             $api,
             new Metaregistrar\EPP\eppInfoDomainRequest(new Metaregistrar\EPP\eppDomain($domain))
         );
+
         if (!$info) {
             return [];
         }
 
-        $contacts = $info->getDomainContacts();
+        // Get domain registrant
+        $registrant = $info->getDomainRegistrant();
         $this->log(
             $row->meta->username . '|eppInfoDomainRequest',
-            json_encode(compact('contacts')),
+            json_encode(compact('registrant')),
             'output',
             !empty($contacts)
         );
 
         // Format contacts
-        $types = ['admin', 'tech', 'billing'];
+        $types = ['registrant'];
         $formatted_contacts = [];
-        foreach ($contacts ?? [] as $contact) {
-            if (!in_array($contact->getContactType(), $types)) {
-                continue;
-            }
-
-            $type = $contact->getContactType();
-            $contact = $this->request($api, new Metaregistrar\EPP\eppInfoContactRequest($contact));
+        foreach ($types as $type) {
+            // Fetch contact
+            $contact = $this->request(
+                $api,
+                new Metaregistrar\EPP\eppInfoContactRequest(new Metaregistrar\EPP\eppContactHandle($registrant))
+            );
 
             // Format name
             $name = [$contact->getContactName()];
@@ -2048,6 +2029,7 @@ class Nominet extends RegistrarModule
                 $name = explode(' ', $contact->getContactName(), 2);
             }
 
+            // Format contact
             $formatted_contacts[] = (object) [
                 'external_id' => $type,
                 'email' => $contact->getContactEmail(),
@@ -2251,6 +2233,8 @@ class Nominet extends RegistrarModule
      */
     public function setDomainContacts($domain, array $vars = [], $module_row_id = null)
     {
+        ob_start();
+
         Loader::loadHelpers($this, ['Html']);
         $row = $this->getModuleRow($module_row_id);
         $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
@@ -2269,33 +2253,13 @@ class Nominet extends RegistrarModule
         // Set contact type
         foreach ($vars as $key => $contact) {
             switch ($key) {
-                case 'admin':
-                    $contact['external_id'] = Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_ADMIN;
-                    break;
-                case 'tech':
-                    $contact['external_id'] = Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_TECH;
-                    break;
-                case 'billing':
-                    $contact['external_id'] = Metaregistrar\EPP\eppContactHandle::CONTACT_TYPE_BILLING;
+                case 'registrant':
+                    $contact['external_id'] = NominetEppContactHandle::CONTACT_TYPE_REGISTRANT;
                     break;
             }
         }
 
         try {
-            // Delete existing domain contacts
-            $delete = null;
-            if (!empty($vars)) {
-                foreach ($vars as $key => $contact) {
-                    $old = $info->getDomainContact($contact['external_id']);
-                    if (empty($old)) {
-                        continue;
-                    } elseif ($delete == null) {
-                        $delete = new Metaregistrar\EPP\eppDomain($domain);
-                    }
-                    $delete->addContact(new Metaregistrar\EPP\eppContactHandle($old->getId(), $key));
-                }
-            }
-
             // Create contacts
             foreach ($vars as &$contact) {
                 if (empty($contact['first_name']) && empty($contact['last_name'])) {
@@ -2325,28 +2289,31 @@ class Nominet extends RegistrarModule
                 $epp_contact->setPassword($this->generatePassword());
                 $response = $api->request(new Metaregistrar\EPP\eppCreateContactRequest($epp_contact));
 
+                $this->log(
+                    $api->getUsername() . '|eppContact',
+                    json_encode($response),
+                    'output'
+                );
+
                 if ($response->getContactId()) {
                     $contact['id'] = $response->getContactId();
                 }
             }
-            print_r($vars);
 
-            // Add new domain contacts
-            $add = new Metaregistrar\EPP\eppDomain($domain);
+            // Set new contact ID
+            $update = new NominetEppDomain($domain);
             if (!empty($vars)) {
                 foreach ($vars as $key => $contact) {
                     if (empty($contact['id'])) {
                         continue;
                     }
-                    $add->addContact(new Metaregistrar\EPP\eppContactHandle($contact['id'], $key));
+                    $update->setRegistrant($contact['id']);
                 }
             }
-            print_r($add);
 
-            // Send request to the EPP server
             $response = $this->request(
                 $api,
-                new Metaregistrar\EPP\eppUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), $add, $delete)
+                new Metaregistrar\EPP\eppUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), null, null, $update)
             );
         } catch (Throwable $e) {
             if (isset($this->Input)) {
@@ -2361,6 +2328,8 @@ class Nominet extends RegistrarModule
 
             return false;
         }
+
+        ob_end_clean();
 
         return $response !== false;
     }
@@ -2742,6 +2711,7 @@ class Nominet extends RegistrarModule
         Loader::load(dirname(__FILE__) . DS . 'lib' . DS . 'epp_connection.php');
         Loader::load(dirname(__FILE__) . DS . 'lib' . DS . 'epp_domain.php');
         Loader::load(dirname(__FILE__) . DS . 'lib' . DS . 'epp_domain_request.php');
+        Loader::load(dirname(__FILE__) . DS . 'lib' . DS . 'epp_contact_handler.php');
 
         $connection = new NominetEppConnection();
 
