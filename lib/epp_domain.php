@@ -19,6 +19,11 @@ class NominetEppDomain extends eppDomain
     private $tag = '';
 
     /**
+     * @var string The registrant contact
+     */
+    private $registrant = '';
+
+    /**
      * Set the new domain tag
      *
      * @param string $tag The new registrant tag
@@ -34,5 +39,23 @@ class NominetEppDomain extends eppDomain
      */
     public function getTag() {
         return $this->tag;
+    }
+
+    /**
+     * Set the new registrant contact
+     *
+     * @param string $registrant The new registrant contact
+     */
+    public function setRegistrant($registrant) {
+        $this->registrant = $registrant;
+    }
+
+    /**
+     * Returns the registrant contact
+     *
+     * @return string The domain registrant contact
+     */
+    public function getRegistrant() {
+        return $this->registrant;
     }
 }
