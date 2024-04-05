@@ -490,7 +490,7 @@ class Nominet extends RegistrarModule
         ];
 
         // Remove empty nameservers
-        foreach ($vars['ns'] as $key => $ns) {
+        foreach ($vars['ns'] ?? [] as $key => $ns) {
             if (empty($ns)) {
                 unset($vars['ns'][$key]);
             }
@@ -1433,12 +1433,12 @@ class Nominet extends RegistrarModule
         }
 
         // Delete exist record
-        if (!empty($post) && ($post['action'] == 'delete')) {
+        if (!empty($post) && (($post['action'] ?? 'add') == 'delete')) {
             $this->deleteDnssec($service_fields->domain, $service->module_row_id, $post);
         }
 
         // Add new record
-        if (!empty($post) && ($post['action'] !== 'delete')) {
+        if (!empty($post) && (($post['action'] ?? 'add') !== 'delete')) {
             $this->addDnssec($service_fields->domain, $service->module_row_id, $post);
             $vars = (object) $post;
         }

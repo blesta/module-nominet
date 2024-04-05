@@ -40,7 +40,7 @@
         <ul>
             <li>
                 <p><?php $this->_('Nominet.tab_settings.text_auth_code');?></p>
-                <div class="badge badge-info mt-2"><?php echo $this->Html->safe($domain['epp_code'] ?? '');?></div>
+                <div class="badge badge-info mt-2"><?php echo $this->Html->safe($domain['epp_code'] ?? 'None');?></div>
             </li>
         </ul>
     </div>
