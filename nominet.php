@@ -1869,6 +1869,17 @@ class Nominet extends RegistrarModule
         );
         $register->setAuthorisationCode($this->generatePassword(6, 8));
 
+        // Set contact
+        $update = new NominetEppDomain($domain);
+        if ($contact_id) {
+            $update->setRegistrant($contact_id);
+        }
+
+        $this->request(
+            $api,
+            new Metaregistrar\EPP\eppUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), null, null, $update)
+        );
+
         // Set nameservers
         if (isset($vars['ns']) && is_array($vars['ns'])) {
             foreach ($vars['ns'] as $nameserver) {
