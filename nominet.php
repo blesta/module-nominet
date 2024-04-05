@@ -601,7 +601,7 @@ class Nominet extends RegistrarModule
             if ($this->Input->errors()) {
                 return;
             }
-            
+
             // Format input
             $vars = $this->getFieldsFromInput($vars, $package);
 
@@ -1848,7 +1848,7 @@ class Nominet extends RegistrarModule
                         : Metaregistrar\EPP\eppContact::TYPE_INT
                 ),
                 $vars['contact']['email'] ?? '',
-                $this->formatPhone($contact['phone'] ?? '', $contact['country'])
+                $this->formatPhone($vars['contact']['phone'] ?? '', $vars['contact']['country'] ?? 'UK')
             );
             $contact->setPassword($this->generatePassword());
 
@@ -2233,8 +2233,6 @@ class Nominet extends RegistrarModule
      */
     public function setDomainContacts($domain, array $vars = [], $module_row_id = null)
     {
-        ob_start();
-
         Loader::loadHelpers($this, ['Html']);
         $row = $this->getModuleRow($module_row_id);
         $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
@@ -2307,6 +2305,7 @@ class Nominet extends RegistrarModule
                     if (empty($contact['id'])) {
                         continue;
                     }
+
                     $update->setRegistrant($contact['id']);
                 }
             }
@@ -2328,8 +2327,6 @@ class Nominet extends RegistrarModule
 
             return false;
         }
-
-        ob_end_clean();
 
         return $response !== false;
     }
