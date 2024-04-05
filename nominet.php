@@ -2702,7 +2702,7 @@ class Nominet extends RegistrarModule
             Loader::loadModels($this, ['Contacts']);
         }
 
-        return $this->Contacts->intlNumber($number, $country, '.');
+        return '+' . $this->Contacts->intlNumber($number, $country, '.');
     }
 
     /**
