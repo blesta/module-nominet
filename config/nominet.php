@@ -19,7 +19,13 @@ Configure::set('Nominet.tlds', [
     '.uk',
     '.co.uk',
     '.org.uk',
-    '.me.uk'
+    '.me.uk',
+    '.ltd.uk',
+    '.net.uk',
+    '.plc.uk',
+    '.sch.uk',
+    '.wales',
+    '.cymru'
 ]);
 
 // Domain fields
