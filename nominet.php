@@ -2702,7 +2702,9 @@ class Nominet extends RegistrarModule
             Loader::loadModels($this, ['Contacts']);
         }
 
-        return preg_replace('/\++/', '+', '+' . $this->Contacts->intlNumber($number, $country, '.'));
+        $number = preg_replace('/\++/', '+', $number);
+
+        return $this->Contacts->intlNumber(preg_replace('/[^0-9+\.]/', '', $number), $country, '.');
     }
 
     /**
