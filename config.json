@@ -1,5 +1,5 @@
 {
-    "version": "1.1.0",
+    "version": "1.2.2",
     "type": "registrar",
     "name": "Nominet.name",
     "description": "Nominet.description",
@@ -13,7 +13,7 @@
         "row": "Nominet.module_row",
         "rows": "Nominet.module_row_plural",
         "group": "Nominet.module_group",
-        "row_key": "username"
+        "row_key": "display_name"
     },
     "package": {
         "name_key": "epp_code"

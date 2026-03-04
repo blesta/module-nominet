@@ -73,6 +73,40 @@ Configure::set('Nominet.tag_fields', [
 
 // Contact fields
 Configure::set('Nominet.contact_fields', [
+    'org_name' => [
+        'label' => Language::_('Nominet.contact_fields.org_name', true),
+        'type' => 'text'
+    ],
+    'type' => [
+        'label' => Language::_('Nominet.contact_fields.type', true),
+        'type' => 'select',
+        'options' => [
+            'LTD' => 'UK Limited Company',
+            'PLC' => 'UK Public Limited Company',
+            'PTNR' => 'UK Partnership',
+            'STRA' => 'UK Sole Trader',
+            'LLP' => 'UK Limited Liability Partnership',
+            'IP' => 'UK Industrial/Provident Company',
+            'IND' => 'UK Individual',
+            'SCH' => 'UK School',
+            'RCHAR' => 'UK Registered Charity',
+            'GOV' => 'UK Government Body',
+            'CRC' => 'UK Corporation by Royal Charter',
+            'STAT' => 'UK Statutory Body',
+            'OTHER' => 'UK Other',
+            'FIND' => 'Non-UK Individual',
+            'FCORP' => 'Non-UK Corporation',
+            'FOTHER' => 'Non-UK Other',
+        ]
+    ],
+    'trad_name' => [
+        'label' => Language::_('Nominet.contact_fields.trad_name', true),
+        'type' => 'text'
+    ],
+    'co_no' => [
+        'label' => Language::_('Nominet.contact_fields.co_no', true),
+        'type' => 'text'
+    ],
     'email' => [
         'label' => Language::_('Nominet.contact_fields.email', true),
         'type' => 'text'
@@ -115,30 +149,30 @@ Configure::set('Nominet.contact_fields', [
 // DNSSEC options
 Configure::set('Nominet.dnssec_options', [
     'flags' => [
-        '256' => 'Key Signing Key (KSK)',
-        '257' => 'Zone Signing Key (ZSK)'
+        '256' => 'Zone Signing Key (ZSK)',
+        '257' => 'Key Signing Key (KSK)'
     ],
     'digest' => [
-        '1' => 'SHA-1',
-        '2' => 'SHA-256',
-        '3' => 'GOST R 34.11-94',
-        '4' => 'SHA-384'
+        '1' => '1 - SHA-1',
+        '2' => '2 - SHA-256',
+        '3' => '3 - GOST R 34.11-94',
+        '4' => '4 - SHA-384'
     ],
     'algorithms' => [
-        '1' => 'RSA/MD5',
-        '2' => 'Diffie-Hellman',
-        '3' => 'DSA/SHA-1',
-        '4' => 'Elliptic Curve',
-        '5' => 'RSA/SHA-1',
-        '6' => 'DSA-NSEC3-SHA1',
-        '7' => 'RSASHA1-NSEC3-SHA1',
-        '8' => 'RSA/SHA-256',
-        '10' => 'RSA/SHA-512',
-        '12' => 'ECC-GOST',
-        '13' => 'ECDSA Curve P-256 with SHA-256',
-        '14' => 'ECDSA Curve P-384 with SHA-384',
-        '252' => 'Indirect',
-        '253' => 'Private DNS',
-        '254' => 'Private OID'
+        '1' => '1 - RSA/MD5',
+        '2' => '2 - Diffie-Hellman',
+        '3' => '3 - DSA/SHA-1',
+        '4' => '4 - Elliptic Curve',
+        '5' => '5 - RSA/SHA-1',
+        '6' => '6 - DSA-NSEC3-SHA1',
+        '7' => '7 - RSASHA1-NSEC3-SHA1',
+        '8' => '8 - RSA/SHA-256',
+        '10' => '10 - RSA/SHA-512',
+        '12' => '12 - ECC-GOST',
+        '13' => '13 - ECDSA Curve P-256 with SHA-256',
+        '14' => '14 - ECDSA Curve P-384 with SHA-384',
+        '252' => '252 - Indirect',
+        '253' => '253 - Private DNS',
+        '254' => '254 - Private OID'
     ]
 ]);
