@@ -95,6 +95,14 @@ class Nominet extends RegistrarModule
             }
         }
 
+        // Fetch module
+        Loader::loadModels($this, ['ModuleManager']);
+        $module = $this->ModuleManager->getByClass(
+            \Illuminate\Support\Str::snake(get_class($this)),
+            Configure::get('Blesta.company_id')
+        );
+        $module = ($module[0] ?? []);
+        $this->view->set('module', (object) $module);
         $this->view->set('vars', (object) $vars);
 
         return $this->view->fetch();
@@ -131,6 +139,14 @@ class Nominet extends RegistrarModule
             }
         }
 
+        // Fetch module
+        Loader::loadModels($this, ['ModuleManager']);
+        $module = $this->ModuleManager->getByClass(
+            \Illuminate\Support\Str::snake(get_class($this)),
+            Configure::get('Blesta.company_id')
+        );
+        $module = ($module[0] ?? []);
+        $this->view->set('module', (object) $module);
         $this->view->set('vars', (object) $vars);
 
         return $this->view->fetch();
@@ -297,7 +313,7 @@ class Nominet extends RegistrarModule
             }
 
             return true;
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             // Trap any errors encountered, could not validate connection
         }
 
@@ -405,7 +421,7 @@ class Nominet extends RegistrarModule
         // Build meta data to return
         $meta = [];
         if ($this->Input->validates($vars)) {
-            if (!isset($vars['meta'] )) {
+            if (!isset($vars['meta'])) {
                 return [];
             }
 
@@ -446,7 +462,7 @@ class Nominet extends RegistrarModule
         // Build meta data to return
         $meta = [];
         if ($this->Input->validates($vars)) {
-            if (!isset($vars['meta'] )) {
+            if (!isset($vars['meta'])) {
                 return [];
             }
 
@@ -549,12 +565,12 @@ class Nominet extends RegistrarModule
         $fields->setField($tld_options);
 
         // Set nameservers
-        for ($i=1; $i<=5; $i++) {
+        for ($i = 1; $i <= 5; $i++) {
             $type = $fields->label(Language::_('Nominet.package_fields.ns' . $i, true), 'nominet_ns' . $i);
             $type->attach(
                 $fields->fieldText(
                     'meta[ns][]',
-                    (isset($vars->meta['ns'][$i-1]) ? $vars->meta['ns'][$i-1] : null),
+                    ($vars->meta['ns'][$i - 1] ?? null),
                     ['id' => 'nominet_ns' . $i]
                 )
             );
@@ -595,7 +611,6 @@ class Nominet extends RegistrarModule
         $status = 'pending'
     ) {
         if (($row = $this->getModuleRow())) {
-
             // Validate service
             $this->validateService($package, $vars);
             if ($this->Input->errors()) {
@@ -1918,7 +1933,7 @@ class Nominet extends RegistrarModule
 
         if (($info = $this->request($api, new Metaregistrar\EPP\eppInfoDomainRequest($renew)))) {
             // Send request
-            $expiration_date = date('Y-m-d',strtotime($info->getDomainExpirationDate()));
+            $expiration_date = date('Y-m-d', strtotime($info->getDomainExpirationDate()));
             $response = $this->request($api, new Metaregistrar\EPP\eppRenewRequest($renew, $expiration_date));
 
             return $response->getResultCode() == 1000;

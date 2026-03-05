@@ -9,6 +9,7 @@ $lang['Nominet.module_row'] = 'Account';
 $lang['Nominet.module_row_plural'] = 'Accounts';
 $lang['Nominet.module_group'] = 'Accounts Group';
 
+$lang['Nominet.back_to_manage'] = 'Back';
 
 // Module management
 $lang['Nominet.add_module_row'] = 'Add Account';

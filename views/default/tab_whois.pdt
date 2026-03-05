@@ -1,15 +1,18 @@
+<?php /** @var View $this **/ ?>
 
-    <?php
+<?php
     $this->Form->create();
     ?>
 
-    <div class="pad">
-        <ul>
-            <?php
+<div class="pad">
+    <ul>
+    <?php
+
             foreach ($whois_fields ?? [] as $name => $field) {
             ?>
-                <li>
-                    <?php
+        <li>
+    <?php
+
                     $this->Form->label($field['label'], 'registrant_' . $name);
 
                     if ($field['type'] == 'select') {
@@ -25,18 +28,19 @@
                         $this->Form->fieldText('registrant[' . $name . ']', ($vars->registrant[$name] ?? ''), ['id' => 'registrant_' . $name, 'placeholder' => $field['label']]);
                     }
                     ?>
-                </li>
-            <?php
+        </li>
+    <?php
             }
             ?>
-        </ul>
-    </div>
+    </ul>
+</div>
 
-    <div class="button_row">
-        <?php
+<div class="button_row">
+    <?php
+
         $this->Form->fieldSubmit(null, $this->_('Nominet.tab_whois.field_submit', true), ['class' => 'btn btn-primary float-right']);
         ?>
-    </div>
-    <?php
+</div>
+<?php
     $this->Form->end();
     ?>
