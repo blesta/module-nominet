@@ -1,7 +1,7 @@
 <?php /** @var View $this **/ ?>
 
-<h6 class="form-section-header first"><?php $this->_('Nominet.tab_dnssec.heading'); ?></h6>
-<div class="pad">
+<h6 class="form-section-header"><?php $this->_('Nominet.tab_dnssec.heading'); ?></h6>
+<div class="mb-3">
     <?php if (!empty($dnssec)) { ?>
     <table class="table">
         <tbody>
@@ -52,8 +52,10 @@
 </div>
 
 <h6 class="form-section-header mt-4"><?php $this->_('Nominet.tab_dnssec.heading_add_record'); ?></h6>
-                    <?php $this->Form->create(); ?>
-<div class="pad">
+                    <?php
+$this->Form->create();
+?>
+<div class="mb-3">
     <ul>
         <li>
     <?php
@@ -88,10 +90,11 @@
     </ul>
 </div>
 
-<div class="button_row">
+<div class="d-flex justify-content-end">
     <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_dnssec.field_submit', true), [
-        'class' => 'btn btn-primary float-right',
+        'class' => 'btn btn-primary float-right'
     ]); ?>
 </div>
-                    <?php $this->Form->end();
+                    <?php
+$this->Form->end();
 ?>

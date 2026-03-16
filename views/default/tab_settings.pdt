@@ -4,8 +4,8 @@
 $this->Form->create();
 
 if ($ips_tag ?? false) { ?>
-<h6 class="form-section-header first"><?php $this->_('Nominet.tab_settings.heading_push_domain'); ?></h6>
-<div class="pad">
+<h6 class="form-section-header"><?php $this->_('Nominet.tab_settings.heading_push_domain'); ?></h6>
+<div class="mb-3">
     <ul>
         <li>
             <p><?php $this->_('Nominet.tab_settings.text_push_domain'); ?></p>
@@ -20,9 +20,9 @@ if ($ips_tag ?? false) { ?>
     </ul>
 </div>
 
-<div class="button_row">
+<div class="d-flex justify-content-end">
     <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_settings.field_submit', true), [
-        'class' => 'btn btn-primary float-right',
+        'class' => 'btn btn-primary float-right'
     ]); ?>
 </div>
 <?php }
@@ -32,7 +32,7 @@ $this->Form->end();
 
 <?php if ($epp_code ?? false) { ?>
 <h6 class="form-section-header mt-4"><?php $this->_('Nominet.tab_settings.heading_auth_code'); ?></h6>
-<div class="pad">
+<div class="mb-3">
     <ul>
         <li>
             <p><?php $this->_('Nominet.tab_settings.text_auth_code'); ?></p>
