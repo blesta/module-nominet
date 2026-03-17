@@ -1,27 +1,25 @@
 <?php /** @var View $this **/ ?>
 
 <h6 class="form-section-header"><?php $this->_('Nominet.tab_nameservers.heading'); ?></h6>
-
 <?php
 $this->Form->create();
 ?>
-<div class="mb-3">
-    <ul>
-    <?php foreach ($nameserver_fields ?? [] as $name => $field) { ?>
-        <li>
     <?php
-    $this->Form->label($field['label'], $name);
-    $this->Form->fieldText($name, $vars->{$name} ?? '', ['id' => $name, 'placeholder' => $field['label']]);
+    foreach ($nameserver_fields ?? [] as $name => $field) {
     ?>
-        </li>
-    <?php } ?>
-    </ul>
-</div>
+        <div class="mb-3">
+            <?php
+            $this->Form->label($field['label'], $name, ['class' => 'form-label']);
+            $this->Form->fieldText($name, $vars->{$name} ?? '', ['id' => $name, 'placeholder' => $field['label']]);
+            ?>
+        </div>
+    <?php
+    }
+    ?>
 
-<div class="d-flex justify-content-end">
-    <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_nameservers.field_submit', true), [
-        'class' => 'btn btn-primary float-right'
-    ]); ?>
-</div>
-<?php$this->Form->end();
+    <div class="d-flex justify-content-end">
+        <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_nameservers.field_submit', true), ['class' => 'btn btn-primary float-right']); ?>
+    </div>
+<?php
+$this->Form->end();
 ?>

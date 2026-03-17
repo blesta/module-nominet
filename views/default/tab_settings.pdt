@@ -3,42 +3,37 @@
 <?php
 $this->Form->create();
 
-if ($ips_tag ?? false) { ?>
+if ($ips_tag ?? false) {
+?>
 <h6 class="form-section-header"><?php $this->_('Nominet.tab_settings.heading_push_domain'); ?></h6>
 <div class="mb-3">
-    <ul>
-        <li>
-            <p><?php $this->_('Nominet.tab_settings.text_push_domain'); ?></p>
+    <p><?php $this->_('Nominet.tab_settings.text_push_domain'); ?></p>
     <?php
-    $this->Form->label($this->_('Nominet.tab_settings.field_tag', true), 'tag');
+    $this->Form->label($this->_('Nominet.tab_settings.field_tag', true), 'tag', ['class' => 'form-label']);
     $this->Form->fieldText('tag', $vars->key_tag ?? null, [
         'id' => 'tag',
-        'placeholder' => $this->_('Nominet.tab_settings.field_tag', true),
+        'placeholder' => $this->_('Nominet.tab_settings.field_tag', true)
     ]);
     ?>
-        </li>
-    </ul>
 </div>
 
 <div class="d-flex justify-content-end">
-    <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_settings.field_submit', true), [
-        'class' => 'btn btn-primary float-right'
-    ]); ?>
+    <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_settings.field_submit', true), ['class' => 'btn btn-primary float-right']); ?>
 </div>
-<?php }
+<?php
+}
 
 $this->Form->end();
 ?>
 
-<?php if ($epp_code ?? false) { ?>
-<h6 class="form-section-header mt-4"><?php $this->_('Nominet.tab_settings.heading_auth_code'); ?></h6>
+<?php
+if ($epp_code ?? false) {
+?>
+<h6 class="form-section-header"><?php $this->_('Nominet.tab_settings.heading_auth_code'); ?></h6>
 <div class="mb-3">
-    <ul>
-        <li>
-            <p><?php $this->_('Nominet.tab_settings.text_auth_code'); ?></p>
-            <div class="badge badge-info mt-2"><?php echo $this->Html->safe($domain['epp_code'] ?? 'None'); ?></div>
-        </li>
-    </ul>
+    <p><?php $this->_('Nominet.tab_settings.text_auth_code'); ?></p>
+    <div class="badge badge-info mt-2"><?php echo $this->Html->safe($domain['epp_code'] ?? 'None'); ?></div>
 </div>
-    <?php }
+<?php
+}
 ?>

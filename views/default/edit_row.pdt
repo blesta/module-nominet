@@ -10,17 +10,16 @@ $this->Widget->setLinkButtons([
     ],
 ]);
 $this->Widget->create($this->_('Nominet.edit_row.box_title', true));
-?>
-<div>
-    <?php $this->Form->create(null, ['class' => 'disable-on-submit']); ?>
 
+$this->Form->create(null, ['class' => 'disable-on-submit']);
+?>
     <div class="mb-3">
         <label for="username" class="form-label">
             <?php $this->_('Nominet.row_meta.username'); ?>
         </label>
         <?php $this->Form->fieldText('username', $vars->username ?? null, [
             'id' => 'username',
-            'class' => 'form-control',
+            'class' => 'form-control'
         ]); ?>
     </div>
 
@@ -30,7 +29,7 @@ $this->Widget->create($this->_('Nominet.edit_row.box_title', true));
         </label>
         <?php $this->Form->fieldText('password', $vars->password ?? null, [
             'id' => 'password',
-            'class' => 'form-control',
+            'class' => 'form-control'
         ]); ?>
     </div>
 
@@ -38,7 +37,7 @@ $this->Widget->create($this->_('Nominet.edit_row.box_title', true));
         <div class="form-check">
             <?php $this->Form->fieldCheckbox('secure', 'true', ($vars->secure ?? 'false') == 'true', [
                 'id' => 'secure',
-                'class' => 'form-check-input',
+                'class' => 'form-check-input'
             ]); ?>
             <label for="secure" class="form-check-label">
                 <?php $this->_('Nominet.row_meta.secure'); ?>
@@ -50,7 +49,7 @@ $this->Widget->create($this->_('Nominet.edit_row.box_title', true));
         <div class="form-check">
             <?php $this->Form->fieldCheckbox('sandbox', 'true', ($vars->sandbox ?? 'false') == 'true', [
                 'id' => 'sandbox',
-                'class' => 'form-check-input',
+                'class' => 'form-check-input'
             ]); ?>
             <label for="sandbox" class="form-check-label">
                 <?php $this->_('Nominet.row_meta.sandbox'); ?>
@@ -60,12 +59,9 @@ $this->Widget->create($this->_('Nominet.edit_row.box_title', true));
 
     <?php $this->Widget->footer(); ?>
     <div class="d-flex justify-content-end">
-        <?php $this->Form->fieldSubmit('save', $this->_('Nominet.edit_row.edit_btn', true), [
-            'class' => 'btn btn-primary',
-        ]); ?>
+        <?php $this->Form->fieldSubmit('save', $this->_('Nominet.edit_row.edit_btn', true), ['class' => 'btn btn-primary']); ?>
     </div>
-
-    <?php $this->Form->end(); ?>
-</div>
-        <?php $this->Widget->end();
+<?php
+$this->Form->end();
+$this->Widget->end();
 ?>

@@ -2,7 +2,7 @@
 
 <table class="table">
     <tr class="heading_row">
-        <td class="fixed_small center border_none"><i class="fas fa-level-up-alt fa-rotate-90"></i></td>
+        <td class="fixed_small center border_none"><i class="bi bi-arrow-right"></i></td>
         <td><?php $this->_('Nominet.service_info.domain'); ?></td>
     </tr>
     <tr>

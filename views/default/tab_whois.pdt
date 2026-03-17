@@ -3,42 +3,30 @@
 <?php
 $this->Form->create();
 ?>
-
-<div class="mb-3">
-    <ul>
     <?php foreach ($whois_fields ?? [] as $name => $field) { ?>
-        <li>
-    <?php
-    $this->Form->label($field['label'], 'registrant_' . $name);
+    <div class="mb-3">
+        <?php
+        $this->Form->label($field['label'], 'registrant_' . $name, ['class' => 'form-label']);
 
-    if ($field['type'] == 'select') {
-        $options = [];
-        if (!is_array($field['options'])) {
-            $options = ${$field['options']} ?? [];
+        if ($field['type'] == 'select') {
+            $options = [];
+            if (!is_array($field['options'])) {
+                $options = ${$field['options']} ?? [];
+            } else {
+                $options = $field['options'] ?? [];
+            }
+
+            $this->Form->fieldSelect('registrant[' . $name . ']', $options, $vars->registrant[$name] ?? '', ['id' => 'registrant_' . $name]);
         } else {
-            $options = $field['options'] ?? [];
+            $this->Form->fieldText('registrant[' . $name . ']', $vars->registrant[$name] ?? '', ['id' => 'registrant_' . $name,'placeholder' => $field['label']]);
         }
-
-        $this->Form->fieldSelect('registrant[' . $name . ']', $options, $vars->registrant[$name] ?? '', [
-            'id' => 'registrant_' . $name,
-        ]);
-    } else {
-        $this->Form->fieldText('registrant[' . $name . ']', $vars->registrant[$name] ?? '', [
-            'id' => 'registrant_' . $name,
-            'placeholder' => $field['label'],
-        ]);
-    }
-    ?>
-        </li>
+        ?>
+    </div>
     <?php } ?>
-    </ul>
-</div>
 
-<div class="d-flex justify-content-end">
-    <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_whois.field_submit', true), [
-        'class' => 'btn btn-primary float-right'
-    ]); ?>
-</div>
+    <div class="d-flex justify-content-end">
+        <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_whois.field_submit', true), ['class' => 'btn btn-primary float-right']); ?>
+    </div>
 <?php
 $this->Form->end();
 ?>
