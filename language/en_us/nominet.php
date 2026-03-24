@@ -25,6 +25,8 @@ $lang['Nominet.manage.module_rows.confirm_delete'] = 'Are you sure you want to d
 $lang['Nominet.manage.module_rows_no_results'] = 'There are no Accounts.';
 
 $lang['Nominet.manage.module_groups_title'] = 'Groups';
+$lang['Nominet.manage.tab_rows'] = 'Servers';
+$lang['Nominet.manage.tab_groups'] = 'Server Groups';
 $lang['Nominet.manage.module_groups_heading.name'] = 'Name';
 $lang['Nominet.manage.module_groups_heading.module_rows'] = 'Accounts';
 $lang['Nominet.manage.module_groups_heading.options'] = 'Options';
