@@ -9,9 +9,8 @@ $this->Widget->setLinkButtons([
         'attributes' => ['href' => $this->base_uri . 'settings/company/modules/manage/' . $module->id],
     ],
 ]);
-$this->Widget->create($this->_('Nominet.add_row.box_title', true));
-
 $this->Form->create(null, ['class' => 'disable-on-submit']);
+$this->Widget->create($this->_('Nominet.add_row.box_title', true));
 ?>
     <div class="mb-3">
         <label for="username" class="form-label">
@@ -62,6 +61,6 @@ $this->Form->create(null, ['class' => 'disable-on-submit']);
         <?php $this->Form->fieldSubmit('save', $this->_('Nominet.add_row.add_btn', true), ['class' => 'btn btn-primary']); ?>
     </div>
 <?php
-$this->Form->end();
 $this->Widget->end();
+$this->Form->end();
 ?>

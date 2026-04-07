@@ -4,20 +4,18 @@
 <div class="mb-3">
     <?php if (!empty($dnssec)) { ?>
     <table class="table">
-        <tbody>
-            <tr class="heading_row">
-                <td><span><?php $this->_('Nominet.tab_dnssec.header_key_tag'); ?></span></td>
-                <td><span><?php $this->_('Nominet.tab_dnssec.header_digest_type'); ?></span></td>
-                <td><span><?php $this->_('Nominet.tab_dnssec.header_algorithm'); ?></span></td>
-                <td><span><?php $this->_('Nominet.tab_dnssec.header_digest'); ?></span></td>
-                <td class="last"><span><?php $this->_('Nominet.tab_dnssec.header_options'); ?></span></td>
+        <thead>
+            <tr>
+                <th><span><?php $this->_('Nominet.tab_dnssec.header_key_tag'); ?></span></th>
+                <th><span><?php $this->_('Nominet.tab_dnssec.header_digest_type'); ?></span></th>
+                <th><span><?php $this->_('Nominet.tab_dnssec.header_algorithm'); ?></span></th>
+                <th><span><?php $this->_('Nominet.tab_dnssec.header_digest'); ?></span></th>
+                <th><span><?php $this->_('Nominet.tab_dnssec.header_options'); ?></span></th>
             </tr>
-
-            <?php
-            $i = 0;
-            foreach ($dnssec ?? [] as $record) {
-            ?>
-            <tr<?php echo $i % 2 == 1 ? ' class="odd_row"' : ''; ?>>
+        </thead>
+        <tbody>
+            <?php foreach ($dnssec ?? [] as $record) { ?>
+            <tr>
                 <td><?php echo $this->Html->safe($record->key_tag ?? null); ?></td>
                 <td><?php echo $this->Html->safe($digest[$record->digest_type] ?? null); ?></td>
                 <td><?php echo $this->Html->safe($algorithms[$record->algorithm] ?? null); ?></td>
@@ -30,19 +28,17 @@
                     $this->Form->fieldHidden('key_tag', $record->key_tag ?? null);
                     $this->Form->fieldHidden('algorithm', $record->algorithm ?? null);
                     $this->Form->fieldHidden('digest_type', $record->digest_type ?? null);
-                    $this->Form->fieldButton('action', $this->_('Nominet.tab_dnssec.field_delete', true), [
-                        'class' => 'btn btn-danger',
+                    $this->Form->fieldButton('action', '<i class="bi bi-trash"></i>', [
+                        'class' => 'btn btn-sm btn-outline-danger',
                         'value' => 'delete',
                         'type' => 'submit',
+                        'title' => $this->_('Nominet.tab_dnssec.field_delete', true),
                     ]);
                     $this->Form->end();
                     ?>
                 </td>
-                </tr>
-                <?php
-                    $i++;
-                }
-                ?>
+            </tr>
+            <?php } ?>
         </tbody>
     </table>
     <?php } else { ?>
@@ -62,6 +58,7 @@ $this->Form->create();
         $this->Form->label($this->_('Nominet.tab_dnssec.field_key_tag', true), 'key_tag', ['class' => 'form-label']);
         $this->Form->fieldText('key_tag', $vars->key_tag ?? null, [
             'id' => 'key_tag',
+            'class' => 'form-control',
             'placeholder' => $this->_('Nominet.tab_dnssec.field_key_tag', true),
         ]);
         ?>
@@ -70,14 +67,14 @@ $this->Form->create();
     <div class="mb-3">
         <?php
         $this->Form->label($this->_('Nominet.tab_dnssec.field_digest_type', true), 'digest_type', ['class' => 'form-label']);
-        $this->Form->fieldSelect('digest_type', $digest ?? null, $vars->digest_type ?? null, ['id' => 'digest_type']);
+        $this->Form->fieldSelect('digest_type', $digest ?? null, $vars->digest_type ?? null, ['id' => 'digest_type', 'class' => 'form-select']);
         ?>
     </div>
 
     <div class="mb-3">
         <?php
         $this->Form->label($this->_('Nominet.tab_dnssec.field_algorithm', true), 'algorithm', ['class' => 'form-label']);
-        $this->Form->fieldSelect('algorithm', $algorithms ?? null, $vars->algorithm ?? null, ['id' => 'algorithm']);
+        $this->Form->fieldSelect('algorithm', $algorithms ?? null, $vars->algorithm ?? null, ['id' => 'algorithm', 'class' => 'form-select']);
         ?>
     </div>
 
@@ -86,13 +83,14 @@ $this->Form->create();
         $this->Form->label($this->_('Nominet.tab_dnssec.field_digest', true), 'digest', ['class' => 'form-label']);
         $this->Form->fieldText('digest', $vars->digest ?? null, [
             'id' => 'digest',
+            'class' => 'form-control',
             'placeholder' => $this->_('Nominet.tab_dnssec.field_digest', true)
         ]);
         ?>
     </div>
 
     <div class="d-flex justify-content-end">
-        <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_dnssec.field_submit', true), ['class' => 'btn btn-primary float-right']); ?>
+        <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_dnssec.field_submit', true), ['class' => 'btn btn-primary']); ?>
     </div>
 <?php
 $this->Form->end();

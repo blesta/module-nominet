@@ -303,18 +303,34 @@ class Nominet extends RegistrarModule
      */
     public function validateConnection($password, $username, $secure = 'false', $sandbox = 'false')
     {
+        $this->log(
+            $username . '|validateConnection',
+            json_encode(compact('username', 'secure', 'sandbox')),
+            'input',
+            true
+        );
+
         try {
             $api = $this->getApi($username, $password, $secure, $sandbox);
 
             // Check with the credentials with the EPP server
             $availability = $this->request($api, new Metaregistrar\EPP\eppCheckDomainRequest(['nominet.org.uk']));
             if ($availability == false || empty($availability->getCheckedDomains())) {
+                $this->log($username . '|validateConnection', json_encode(['success' => false]), 'output', false);
+
                 return false;
             }
 
+            $this->log($username . '|validateConnection', json_encode(['success' => true]), 'output', true);
+
             return true;
         } catch (\Throwable $e) {
-            // Trap any errors encountered, could not validate connection
+            $this->log(
+                $username . '|validateConnection',
+                json_encode(['exception' => $e->getMessage()]),
+                'output',
+                false
+            );
         }
 
         return false;

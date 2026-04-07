@@ -16,16 +16,16 @@ $this->Form->create();
                 $options = $field['options'] ?? [];
             }
 
-            $this->Form->fieldSelect('registrant[' . $name . ']', $options, $vars->registrant[$name] ?? '', ['id' => 'registrant_' . $name]);
+            $this->Form->fieldSelect('registrant[' . $name . ']', $options, $vars->registrant[$name] ?? '', ['id' => 'registrant_' . $name, 'class' => 'form-select']);
         } else {
-            $this->Form->fieldText('registrant[' . $name . ']', $vars->registrant[$name] ?? '', ['id' => 'registrant_' . $name,'placeholder' => $field['label']]);
+            $this->Form->fieldText('registrant[' . $name . ']', $vars->registrant[$name] ?? '', ['id' => 'registrant_' . $name, 'class' => 'form-control', 'placeholder' => $field['label']]);
         }
         ?>
     </div>
     <?php } ?>
 
     <div class="d-flex justify-content-end">
-        <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_whois.field_submit', true), ['class' => 'btn btn-primary float-right']); ?>
+        <?php $this->Form->fieldSubmit(null, $this->_('Nominet.tab_whois.field_submit', true), ['class' => 'btn btn-primary']); ?>
     </div>
 <?php
 $this->Form->end();
