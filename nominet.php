@@ -2842,8 +2842,29 @@ class Nominet extends RegistrarModule
 
         Loader::loadModels($this, ['Currencies']);
 
+        $company_id = Configure::get('Blesta.company_id');
+        $cost_currency = $this->Currencies->get('GBP', $company_id);
+
+        // Nominet bills in GBP. Currencies::convert() returns the amount unchanged when the
+        // currency it converts from is not set up for the company, and divides by its
+        // exchange rate, so without both the cost price would be published as-is under
+        // every currency
+        if (empty($cost_currency) || $cost_currency->exchange_rate <= 0) {
+            $this->log(
+                $row->meta->username . '|getFilteredTldPricing',
+                json_encode([
+                    'result' => 'error',
+                    'message' => Language::_('Nominet.!error.cost_price.currency', true)
+                ]),
+                'output',
+                false
+            );
+
+            return [];
+        }
+
         $tlds = Configure::get('Nominet.tlds');
-        $currencies = $this->Currencies->getAll(Configure::get('Blesta.company_id'));
+        $currencies = $this->Currencies->getAll($company_id);
         $pricing = [];
 
         foreach ($tlds as $tld) {
@@ -2858,12 +2879,7 @@ class Nominet extends RegistrarModule
                     continue;
                 }
 
-                $converted = $this->Currencies->convert(
-                    $cost_price,
-                    'GBP',
-                    $currency->code,
-                    Configure::get('Blesta.company_id')
-                );
+                $converted = $this->Currencies->convert($cost_price, 'GBP', $currency->code, $company_id);
 
                 if (!$converted) {
                     continue;

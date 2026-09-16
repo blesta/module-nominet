@@ -70,6 +70,7 @@ $lang['Nominet.!error.ns3.valid'] = 'Invalid Name Server 3';
 $lang['Nominet.!error.ns4.valid'] = 'Invalid Name Server 4';
 $lang['Nominet.!error.ns5.valid'] = 'Invalid Name Server 5';
 $lang['Nominet.!error.cost_price.format'] = 'Cost price must be a valid non-negative number.';
+$lang['Nominet.!error.cost_price.currency'] = 'GBP must be an available currency with an exchange rate to sync pricing.';
 
 
 // Service info
