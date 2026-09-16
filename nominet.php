@@ -214,7 +214,7 @@ class Nominet extends RegistrarModule
             if ($this->isDomainTaggedToAccount($domain, $row)) {
                 // Re-tag confirmed: activate the service and clear the pending flag so
                 // this service is not rechecked again
-                if (($service->status ?? null) !== 'active') {
+                if (($service->status ?? null) === 'pending') {
                     $this->Services->edit($service->id, ['status' => 'active'], true);
                 }
                 $this->Services->editField($service->id, ['key' => 'transfer_pending', 'value' => '0']);
@@ -833,6 +833,8 @@ class Nominet extends RegistrarModule
         $parent_service = null,
         $status = 'pending'
     ) {
+        $is_transfer = $this->isTransfer((array) $vars);
+
         if (($row = $this->getModuleRow())) {
             // Validate service
             $this->validateService($package, $vars);
@@ -845,9 +847,16 @@ class Nominet extends RegistrarModule
 
             // Only provision the service if 'use_module' is true
             if ($vars['use_module'] == 'true') {
-                // For transfers, skip domain registration — the domain already exists.
-                // transferDomain() will be called separately by Blesta to handle the re-tag flow.
-                if (($vars['type'] ?? 'register') !== 'transfer') {
+                if ($is_transfer) {
+                    // .uk domains are transferred by the current registrar re-tagging them to
+                    // our IPS tag, so there is nothing to register. Hold the service until the
+                    // re-tag is confirmed; the check_pending_transfers cron task activates it
+                    if (!$this->transferDomain($vars['domain'], $row->id, $vars)) {
+                        $this->setTransferPending($vars['domain']);
+
+                        return;
+                    }
+                } else {
                     // Get contact from client
                     if (!isset($this->Clients)) {
                         Loader::loadModels($this, ['Clients']);
@@ -902,13 +911,10 @@ class Nominet extends RegistrarModule
             ]
         ];
 
-        // .uk transfers complete out-of-band (the customer's current registrar re-tags
-        // the domain to us) and are not confirmed here. Track that this service is
-        // awaiting re-tag confirmation so transferDomain() does not report success until
-        // that confirmation actually happens.
-        if (($vars['type'] ?? 'register') === 'transfer') {
-            $fields[] = ['key' => 'transfer_pending', 'value' => '1', 'encrypted' => 0];
-            $fields[] = ['key' => 'transfer_requested_date', 'value' => date('Y-m-d H:i:s'), 'encrypted' => 0];
+        // Keep the transfer marker with the service so later provisioning runs, and the
+        // check_pending_transfers cron task, can tell a re-tag transfer from a registration
+        if ($is_transfer) {
+            $fields[] = ['key' => 'transfer', 'value' => '1', 'encrypted' => 0];
         }
 
         return $fields;
@@ -934,9 +940,9 @@ class Nominet extends RegistrarModule
      */
     public function editService($package, $service, array $vars = null, $parent_package = null, $parent_service = null)
     {
-        if (($row = $this->getModuleRow())) {
-            $service_fields = $this->serviceFieldsToObject($service->fields);
+        $service_fields = $this->serviceFieldsToObject($service->fields);
 
+        if (($row = $this->getModuleRow())) {
             $this->validateService($package, $vars, true);
             if ($this->Input->errors()) {
                 return;
@@ -958,15 +964,19 @@ class Nominet extends RegistrarModule
             );
         }
 
-        // Return all the service fields
+        // Return all the service fields. Blesta replaces every service field with what is
+        // returned here, so the transfer fields must be given back or a service edit would
+        // drop them and the pending transfer would stop being tracked
         $encrypted_fields = [];
         $return = [];
-        $fields = ['domain', 'enable_tag'];
+        $fields = ['domain', 'enable_tag', 'transfer', 'transfer_pending', 'transfer_requested_date'];
         foreach ($fields as $field) {
-            if (isset($vars[$field]) || isset($service_fields[$field])) {
+            $value = $vars[$field] ?? ($service_fields->{$field} ?? null);
+
+            if ($value !== null) {
                 $return[] = [
                     'key' => $field,
-                    'value' => $vars[$field] ?? $service_fields[$field],
+                    'value' => $value,
                     'encrypted' => (in_array($field, $encrypted_fields) ? 1 : 0)
                 ];
             }
@@ -2219,28 +2229,20 @@ class Nominet extends RegistrarModule
     {
         // .uk transfers are not standard EPP pull transfers. The current registrar must
         // re-tag the domain to our IPS tag out-of-band; there is no EPP command we can
-        // send to make this happen. The welcome email (configured in
-        // Nominet.transfer_templates) instructs the customer to contact their current
-        // registrar and ask for a re-tag to our IPS tag.
-        //
-        // Report success only once the re-tag is actually confirmed via a live domain:info
-        // lookup - never assume it happened just because the transfer was requested,
-        // otherwise the service gets activated (and billed) for a domain the customer may
-        // not yet control.
+        // send to make this happen. The transfer is therefore only successful once the
+        // re-tag is confirmed by a live domain:info lookup - never assume it happened just
+        // because the transfer was requested, otherwise the service gets provisioned (and
+        // billed as active) for a domain the customer may not yet control.
         $row = $this->getModuleRow($module_row_id);
         if (!$row) {
+            $this->Input->setErrors(
+                ['module_row' => ['missing' => Language::_('Nominet.!error.module_row.missing', true)]]
+            );
+
             return false;
         }
 
-        $service = $this->getServiceByDomain($domain);
-        $confirmed = $this->isDomainTaggedToAccount($domain, $row);
-
-        if ($confirmed) {
-            if ($service && ($service->status ?? null) !== 'active') {
-                Loader::loadModels($this, ['Services']);
-                $this->Services->edit($service->id, ['status' => 'active'], true);
-            }
-
+        if ($this->isDomainTaggedToAccount($domain, $row)) {
             $this->log(
                 $row->meta->username . '|transferDomain',
                 json_encode(['domain' => $domain, 'result' => 'confirmed']),
@@ -2250,6 +2252,8 @@ class Nominet extends RegistrarModule
 
             return true;
         }
+
+        $service = $this->getServiceByDomain($domain);
 
         // Not yet re-tagged. Surface a staff-visible warning once the request has been
         // outstanding beyond a reasonable window, rather than leaving it silently pending
@@ -2273,6 +2277,15 @@ class Nominet extends RegistrarModule
             'output',
             !$timed_out
         );
+
+        // Setting an error keeps the service from being provisioned, leaving it pending
+        // until the re-tag lands. Blesta gives up retrying after the maximum number of
+        // provisioning attempts, so the check_pending_transfers cron task is what
+        // ultimately activates the service
+        $error = ($timed_out ? 'timeout' : 'pending');
+        $this->Input->setErrors([
+            'transfer' => [$error => Language::_('Nominet.!error.transfer.' . $error, true, $domain)]
+        ]);
 
         return false;
     }
@@ -2301,6 +2314,62 @@ class Nominet extends RegistrarModule
         // Nominet's EPP gateway reports the domain's current IPS tag as the standard EPP
         // sponsoring client ID (clID); the re-tag is complete once it matches our own tag
         return strcasecmp((string) $info->getDomainClientId(), (string) $row->meta->username) === 0;
+    }
+
+    /**
+     * Determines whether the given service vars represent a domain transfer. The order
+     * form posts 'transfer' as "true", the domain manager as "1", and the marker is kept
+     * as a service field so later provisioning runs still recognize the transfer.
+     *
+     * @param array $vars An array of user supplied info to satisfy the request
+     * @return bool True if the service is a domain transfer
+     */
+    private function isTransfer(array $vars)
+    {
+        $transfer = (string) ($vars['transfer'] ?? '');
+
+        if (!in_array($transfer, ['', '0', 'false'], true) || !empty($vars['transfer_pending'])) {
+            return true;
+        }
+
+        // Blesta does not always pass the submitted fields back when a pending service is
+        // provisioned, so fall back to the marker stored with the service
+        $service = empty($vars['domain']) ? null : $this->getServiceByDomain($vars['domain']);
+
+        if ($service && $service->status == 'pending') {
+            $service_fields = $this->serviceFieldsToObject($service->fields ?? []);
+
+            return !empty($service_fields->transfer) || !empty($service_fields->transfer_pending);
+        }
+
+        return false;
+    }
+
+    /**
+     * Flags the service for the given domain as awaiting re-tag confirmation, so the
+     * check_pending_transfers cron task can activate it once the re-tag completes. The
+     * fields are written directly because addService() reports an error while the
+     * transfer is outstanding, and Blesta only stores returned fields on success.
+     *
+     * @param string $domain The domain awaiting the re-tag
+     */
+    private function setTransferPending($domain)
+    {
+        if (!($service = $this->getServiceByDomain($domain))) {
+            return;
+        }
+
+        $service_fields = $this->serviceFieldsToObject($service->fields ?? []);
+
+        $this->Services->editField($service->id, ['key' => 'transfer', 'value' => '1']);
+        $this->Services->editField($service->id, ['key' => 'transfer_pending', 'value' => '1']);
+
+        if (empty($service_fields->transfer_requested_date)) {
+            $this->Services->editField(
+                $service->id,
+                ['key' => 'transfer_requested_date', 'value' => date('Y-m-d H:i:s')]
+            );
+        }
     }
 
     /**

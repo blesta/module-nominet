@@ -67,6 +67,8 @@ $lang['Nominet.row_meta.sandbox'] = 'Sandbox';
 // Errors
 $lang['Nominet.!error.module_row.missing'] = 'An internal error occurred. The module row is unavailable.';
 $lang['Nominet.!error.domain.valid'] = 'The given domain is invalid.';
+$lang['Nominet.!error.transfer.pending'] = 'The domain %1$s has not been re-tagged to our IPS tag yet. The current registrar must complete the re-tag before the transfer can be completed.'; // %1$s is the domain name
+$lang['Nominet.!error.transfer.timeout'] = 'The domain %1$s has not been re-tagged to our IPS tag within 14 days of the transfer request. Please contact the client to confirm the re-tag has been requested from their current registrar.'; // %1$s is the domain name
 $lang['Nominet.!error.ns1.valid'] = 'Invalid Name Server 1';
 $lang['Nominet.!error.ns2.valid'] = 'Invalid Name Server 2';
 $lang['Nominet.!error.ns3.valid'] = 'Invalid Name Server 3';
