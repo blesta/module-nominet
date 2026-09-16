@@ -17,6 +17,7 @@ $lang['Nominet.add_module_group'] = 'Add Accounts Group';
 $lang['Nominet.manage.module_rows_title'] = 'Accounts';
 
 $lang['Nominet.manage.module_rows_heading.username'] = 'Username';
+$lang['Nominet.manage.module_rows_heading.testbed'] = 'Testbed';
 $lang['Nominet.manage.module_rows_heading.options'] = 'Options';
 $lang['Nominet.manage.module_rows.edit'] = 'Edit';
 $lang['Nominet.manage.module_rows.delete'] = 'Delete';
@@ -61,7 +62,6 @@ $lang['Nominet.edit_row.edit_btn'] = 'Update Account';
 $lang['Nominet.row_meta.username'] = 'Username';
 $lang['Nominet.row_meta.password'] = 'Password';
 $lang['Nominet.row_meta.secure'] = 'Use Secure Connection';
-$lang['Nominet.row_meta.sandbox'] = 'Sandbox';
 $lang['Nominet.row_meta.testbed'] = 'Testbed';
 $lang['Nominet.row_meta.cost_price'] = 'Cost Price (GBP)';
 

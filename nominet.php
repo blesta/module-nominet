@@ -63,9 +63,23 @@ class Nominet extends RegistrarModule
     {
         // Upgrade if possible
         if (version_compare($this->getVersion(), $current_version, '>')) {
-            // Upgrade to 2.0.4: add the pending transfer recheck cron task
-            if (version_compare($current_version, '2.0.4', '<')) {
+            // Upgrade: add the pending transfer recheck cron task
+            if (version_compare($current_version, '2.0.2', '<')) {
                 $this->addCronTasks($this->getCronTasks());
+            }
+
+            // Upgrade: rename the 'sandbox' account meta key to 'testbed'
+            if (version_compare($current_version, '2.0.2', '<')) {
+                if (!isset($this->Record)) {
+                    Loader::loadComponents($this, ['Record']);
+                }
+
+                $rows = $this->getModuleRows() ?: [];
+                foreach ($rows as $row) {
+                    $this->Record->where('module_row_id', '=', $row->id)
+                        ->where('key', '=', 'sandbox')
+                        ->update('module_row_meta', ['key' => 'testbed']);
+                }
             }
         }
     }
@@ -252,45 +266,6 @@ class Nominet extends RegistrarModule
     }
 
     /**
-     * Performs migration of data from $current_version (the current installed version)
-     * to the given file set version.
-     *
-     * @param string $current_version The current installed version of this module
-     */
-    public function upgrade($current_version)
-    {
-        if (version_compare($this->getVersion(), $current_version, '>')) {
-            if (version_compare($current_version, '2.0.2', '<')) {
-                if (!isset($this->Record)) {
-                    Loader::loadComponents($this, ['Record']);
-                }
-
-                $rows = $this->getModuleRows();
-                foreach ($rows as $row) {
-                    // Rename 'sandbox' meta key to 'testbed'
-                    $this->Record->where('module_row_id', '=', $row->id)
-                        ->where('key', '=', 'sandbox')
-                        ->update('module_row_meta', ['key' => 'testbed']);
-
-                    // Add display_name if not already present
-                    if (!isset($row->meta->display_name)) {
-                        $username = $row->meta->username ?? '';
-                        $testbed = $row->meta->sandbox ?? 'false';
-                        $display_name = $username . ($testbed === 'true' ? ' (Testbed)' : '');
-                        $this->Record->insert('module_row_meta', [
-                            'module_row_id' => $row->id,
-                            'key' => 'display_name',
-                            'value' => $display_name,
-                            'serialized' => 0,
-                            'encrypted' => 0
-                        ]);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
      * Returns the rendered view of the manage module page.
      *
      * @param mixed $module A stdClass object representing the module and its rows
@@ -411,7 +386,7 @@ class Nominet extends RegistrarModule
      */
     public function addModuleRow(array &$vars)
     {
-        $meta_fields = ['username', 'password', 'secure', 'testbed'];
+        $meta_fields = ['username', 'password', 'secure', 'testbed', 'cost_price'];
         $encrypted_fields = ['password'];
 
         // Set unset checkboxes
@@ -457,7 +432,7 @@ class Nominet extends RegistrarModule
      */
     public function editModuleRow($module_row, array &$vars)
     {
-        $meta_fields = ['username', 'password', 'secure', 'testbed'];
+        $meta_fields = ['username', 'password', 'secure', 'testbed', 'cost_price'];
         $encrypted_fields = ['password'];
 
         // Set unset checkboxes
@@ -1981,7 +1956,7 @@ class Nominet extends RegistrarModule
             return false;
         }
 
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
         $availability = $this->request($api, new Metaregistrar\EPP\eppCheckDomainRequest([$domain]));
 
         if ($availability == false) {
@@ -2351,7 +2326,7 @@ class Nominet extends RegistrarModule
      */
     private function isDomainTaggedToAccount($domain, $row)
     {
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $info = $this->request(
             $api,
