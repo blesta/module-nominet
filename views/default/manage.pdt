@@ -60,6 +60,7 @@ $this->Widget->create(
 <table class="table">
     <tr class="heading_row">
         <td><span><?php $this->_('Nominet.manage.module_rows_heading.username'); ?></span></td>
+        <td><span><?php $this->_('Nominet.manage.module_rows_heading.testbed'); ?></span></td>
         <td class="last"><span><?php $this->_('Nominet.manage.module_rows_heading.options'); ?></span></td>
     </tr>
             <?php for ($i = 0; $i < $num_rows; $i++) { ?>
@@ -67,6 +68,10 @@ $this->Widget->create(
         <td><?php echo isset($module->rows[$i]->meta->username)
             ? $this->Html->safe($module->rows[$i]->meta->username)
             : null; ?></td>
+        <td><?php $testbed = ($module->rows[$i]->meta->testbed ?? 'false') == 'true'; ?>
+            <i class="bi <?php echo $testbed ? 'bi-check-circle text-success' : 'bi-x-circle text-danger'; ?>"
+                title="<?php $this->_('Nominet.manage.module_rows_heading.testbed'); ?>"></i>
+        </td>
         <td class="last">
             <a href="<?php echo $this->Html->safe(
                 $this->base_uri .
