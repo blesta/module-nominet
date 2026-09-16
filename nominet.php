@@ -1713,14 +1713,6 @@ class Nominet extends RegistrarModule
         // Get service fields
         $service_fields = $this->serviceFieldsToObject($service->fields);
 
-        // Fetch domain DNSSEC
-        $dnssec = [];
-        try {
-            $dnssec = $this->getDnssec($service_fields->domain, $service->module_row_id);
-        } catch (Throwable $e) {
-            $this->Input->setErrors(['errors' => ['dnssec' => $e->getMessage()]]);
-        }
-
         // Delete exist record
         if (!empty($post) && (($post['action'] ?? 'add') == 'delete')) {
             $this->deleteDnssec($service_fields->domain, $service->module_row_id, $post);
@@ -1730,6 +1722,14 @@ class Nominet extends RegistrarModule
         if (!empty($post) && (($post['action'] ?? 'add') !== 'delete')) {
             $this->addDnssec($service_fields->domain, $service->module_row_id, $post);
             $vars = (object) $post;
+        }
+
+        // Fetch domain DNSSEC after any modifications
+        $dnssec = [];
+        try {
+            $dnssec = $this->getDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null);
+        } catch (Throwable $e) {
+            $this->Input->setErrors(['errors' => ['dnssec' => $e->getMessage()]]);
         }
 
         $this->view->set('service_fields', $service_fields);
@@ -1772,14 +1772,6 @@ class Nominet extends RegistrarModule
         // Get service fields
         $service_fields = $this->serviceFieldsToObject($service->fields);
 
-        // Fetch domain DNSSEC
-        $dnssec = [];
-        try {
-            $dnssec = $this->getDnssec($service_fields->domain, $service->module_row_id);
-        } catch (Throwable $e) {
-            $this->Input->setErrors(['errors' => ['dnssec' => $e->getMessage()]]);
-        }
-
         // Delete exist record
         if (!empty($post) && ($post['action'] == 'delete')) {
             $this->deleteDnssec($service_fields->domain, $service->module_row_id, $post);
@@ -1789,6 +1781,14 @@ class Nominet extends RegistrarModule
         if (!empty($post) && ($post['action'] !== 'delete')) {
             $this->addDnssec($service_fields->domain, $service->module_row_id, $post);
             $vars = (object) $post;
+        }
+
+        // Fetch domain DNSSEC after any modifications
+        $dnssec = [];
+        try {
+            $dnssec = $this->getDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null);
+        } catch (Throwable $e) {
+            $this->Input->setErrors(['errors' => ['dnssec' => $e->getMessage()]]);
         }
 
         $this->view->set('service_fields', $service_fields);
