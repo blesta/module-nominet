@@ -37,6 +37,10 @@ $lang['Nominet.manage.module_groups.confirm_delete'] = 'Are you sure you want to
 
 $lang['Nominet.manage.module_groups.no_results'] = 'There is no Accounts Group';
 
+// Cron tasks
+$lang['Nominet.getCronTasks.check_pending_transfers_name'] = 'Check Pending .uk Transfers';
+$lang['Nominet.getCronTasks.check_pending_transfers_desc'] = 'Rechecks .uk domain transfers awaiting registrar re-tag confirmation and activates them once the tag change is confirmed by the registry.';
+
 
 // Options
 $lang['Nominet.order_options.roundrobin'] = 'Evenly Distribute Among Servers';
@@ -63,6 +67,8 @@ $lang['Nominet.row_meta.sandbox'] = 'Sandbox';
 // Errors
 $lang['Nominet.!error.module_row.missing'] = 'An internal error occurred. The module row is unavailable.';
 $lang['Nominet.!error.domain.valid'] = 'The given domain is invalid.';
+$lang['Nominet.!error.transfer.pending'] = 'The domain %1$s has not been re-tagged to our IPS tag yet. The current registrar must complete the re-tag before the transfer can be completed.'; // %1$s is the domain name
+$lang['Nominet.!error.transfer.timeout'] = 'The domain %1$s has not been re-tagged to our IPS tag within 14 days of the transfer request. Please contact the client to confirm the re-tag has been requested from their current registrar.'; // %1$s is the domain name
 $lang['Nominet.!error.ns1.valid'] = 'Invalid Name Server 1';
 $lang['Nominet.!error.ns2.valid'] = 'Invalid Name Server 2';
 $lang['Nominet.!error.ns3.valid'] = 'Invalid Name Server 3';
