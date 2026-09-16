@@ -372,7 +372,7 @@ class Nominet extends RegistrarModule
      */
     public function addModuleRow(array &$vars)
     {
-        $meta_fields = ['username', 'password', 'secure', 'sandbox'];
+        $meta_fields = ['username', 'password', 'secure', 'sandbox', 'cost_price'];
         $encrypted_fields = ['password'];
 
         // Set unset checkboxes
@@ -418,7 +418,7 @@ class Nominet extends RegistrarModule
      */
     public function editModuleRow($module_row, array &$vars)
     {
-        $meta_fields = ['username', 'password', 'secure', 'sandbox'];
+        $meta_fields = ['username', 'password', 'secure', 'sandbox', 'cost_price'];
         $encrypted_fields = ['password'];
 
         // Set unset checkboxes
@@ -458,6 +458,11 @@ class Nominet extends RegistrarModule
      */
     private function getRowRules(&$vars)
     {
+        // Treat an empty cost_price as unset so it defaults to no cost price override
+        if (isset($vars['cost_price']) && $vars['cost_price'] === '') {
+            unset($vars['cost_price']);
+        }
+
         $rules = [
             'username' => [
                 'valid' => [
@@ -493,7 +498,14 @@ class Nominet extends RegistrarModule
                     'rule' => ['in_array', ['true', 'false']],
                     'message' => Language::_('Nominet.!error.sandbox.format', true)
                 ]
-            ]
+            ],
+            'cost_price' => [
+                'format' => [
+                    'if_set' => true,
+                    'rule' => ['matches', '/^\d+(\.\d{1,4})?$/'],
+                    'message' => Language::_('Nominet.!error.cost_price.format', true)
+                ]
+            ],
         ];
 
         return $rules;
@@ -3199,5 +3211,112 @@ class Nominet extends RegistrarModule
         $this->log($username . '|login', json_encode($connection), 'output', true);
 
         return $connection;
+    }
+
+    /**
+     * Get a list of the TLD prices
+     *
+     * @param int $module_row_id The ID of the module row to fetch for the current module
+     * @return array A list of all TLDs and their pricing
+     *    [tld => [currency => [year# => ['register' => price, 'transfer' => price, 'renew' => price]]]]
+     */
+    public function getTldPricing($module_row_id = null)
+    {
+        return $this->getFilteredTldPricing($module_row_id);
+    }
+
+    /**
+     * Get a filtered list of the TLD prices
+     *
+     * @param int $module_row_id The ID of the module row to fetch for the current module
+     * @param array $filters A list of criteria by which to filter fetched pricings including:
+     *  - tlds A list of tlds for which to fetch pricings
+     *  - currencies A list of currencies for which to fetch pricings
+     *  - terms A list of terms for which to fetch pricings
+     * @return array A list of all TLDs and their pricing
+     *    [tld => [currency => [year# => ['register' => price, 'transfer' => price, 'renew' => price]]]]
+     */
+    public function getFilteredTldPricing($module_row_id = null, $filters = [])
+    {
+        // Get cost_price from the specified row, or the first available row
+        if ($module_row_id !== null) {
+            $row = $this->getModuleRow($module_row_id);
+        } else {
+            $rows = $this->getModuleRows();
+            $row = $rows[0] ?? null;
+        }
+
+        if ($row === null) {
+            return [];
+        }
+
+        $cost_price = (float) ($row->meta->cost_price ?? 0);
+
+        if ($cost_price <= 0) {
+            return [];
+        }
+
+        Loader::loadModels($this, ['Currencies']);
+
+        $company_id = Configure::get('Blesta.company_id');
+        $cost_currency = $this->Currencies->get('GBP', $company_id);
+
+        // Nominet bills in GBP. Currencies::convert() returns the amount unchanged when the
+        // currency it converts from is not set up for the company, and divides by its
+        // exchange rate, so without both the cost price would be published as-is under
+        // every currency
+        if (empty($cost_currency) || $cost_currency->exchange_rate <= 0) {
+            $this->log(
+                $row->meta->username . '|getFilteredTldPricing',
+                json_encode([
+                    'result' => 'error',
+                    'message' => Language::_('Nominet.!error.cost_price.currency', true)
+                ]),
+                'output',
+                false
+            );
+
+            return [];
+        }
+
+        $tlds = Configure::get('Nominet.tlds');
+        $currencies = $this->Currencies->getAll($company_id);
+        $pricing = [];
+
+        foreach ($tlds as $tld) {
+            if (isset($filters['tlds']) && !in_array($tld, $filters['tlds'])) {
+                continue;
+            }
+
+            $pricing[$tld] = [];
+
+            foreach ($currencies as $currency) {
+                if (isset($filters['currencies']) && !in_array($currency->code, $filters['currencies'])) {
+                    continue;
+                }
+
+                $converted = $this->Currencies->convert($cost_price, 'GBP', $currency->code, $company_id);
+
+                if (!$converted) {
+                    continue;
+                }
+
+                $pricing[$tld][$currency->code] = [];
+
+                foreach (range(1, 10) as $years) {
+                    if (isset($filters['terms']) && !in_array($years, $filters['terms'])) {
+                        continue;
+                    }
+
+                    $pricing[$tld][$currency->code][$years] = [
+                        'register' => $converted * $years,
+                        'transfer' => $converted * $years,
+                        'renew'    => $converted * $years,
+                    ];
+                }
+            }
+        }
+
+        return $pricing;
     }
 }
