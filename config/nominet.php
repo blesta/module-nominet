@@ -15,6 +15,50 @@ Thank you for your business!',
     ]
 ]);
 
+// Transfer email templates — sent when a customer places a domain transfer order.
+// {module.username} resolves to the Nominet EPP username, which is also the IPS tag.
+Configure::set('Nominet.transfer_templates', [
+    'en_us' => [
+        'lang' => 'en_us',
+        'text' => 'Thank you for your domain transfer order!
+
+Domain: {service.domain}
+
+IMPORTANT — Action required to complete your transfer:
+
+Because .uk domains use an IPS tag system rather than standard EPP transfers,
+you need to instruct your CURRENT registrar/host to "re-tag" or "push" the
+domain to us. Here is what to do:
+
+1. Contact your current registrar or hosting provider.
+2. Ask them to re-tag the domain {service.domain} to IPS tag: {module.username}
+   (This may also be described as a "registrar change" or "push transfer".)
+3. Once re-tagged, your domain will automatically come under our management.
+
+If you have any questions, please do not hesitate to contact us.
+
+Thank you for your business!',
+        'html' => '<p>Thank you for your domain transfer order!</p>
+<p><strong>Domain:</strong> {service.domain}</p>
+<hr>
+<h3>IMPORTANT — Action required to complete your transfer</h3>
+<p>Because .uk domains use an IPS tag system rather than standard EPP transfers,
+you need to instruct your <strong>current registrar/host</strong> to
+&ldquo;re-tag&rdquo; or &ldquo;push&rdquo; the domain to us.</p>
+<p>Here is what to do:</p>
+<ol>
+  <li>Contact your current registrar or hosting provider.</li>
+  <li>Ask them to re-tag the domain <strong>{service.domain}</strong> to IPS tag:
+      <strong>{module.username}</strong><br>
+      <em>(This may also be described as a &ldquo;registrar change&rdquo; or
+      &ldquo;push transfer&rdquo;.)</em></li>
+  <li>Once re-tagged, your domain will automatically come under our management.</li>
+</ol>
+<p>If you have any questions, please do not hesitate to contact us.</p>
+<p>Thank you for your business!</p>'
+    ]
+]);
+
 // All available TLDs
 Configure::set('Nominet.tlds', [
     '.uk',
@@ -154,26 +198,26 @@ Configure::set('Nominet.dnssec_options', [
         '257' => 'Key Signing Key (KSK)'
     ],
     'digest' => [
-        '1' => 'SHA-1',
-        '2' => 'SHA-256',
-        '3' => 'GOST R 34.11-94',
-        '4' => 'SHA-384'
+        '1' => '1 - SHA-1',
+        '2' => '2 - SHA-256',
+        '3' => '3 - GOST R 34.11-94',
+        '4' => '4 - SHA-384'
     ],
     'algorithms' => [
-        '1' => 'RSA/MD5',
-        '2' => 'Diffie-Hellman',
-        '3' => 'DSA/SHA-1',
-        '4' => 'Elliptic Curve',
-        '5' => 'RSA/SHA-1',
-        '6' => 'DSA-NSEC3-SHA1',
-        '7' => 'RSASHA1-NSEC3-SHA1',
-        '8' => 'RSA/SHA-256',
-        '10' => 'RSA/SHA-512',
-        '12' => 'ECC-GOST',
-        '13' => 'ECDSA Curve P-256 with SHA-256',
-        '14' => 'ECDSA Curve P-384 with SHA-384',
-        '252' => 'Indirect',
-        '253' => 'Private DNS',
-        '254' => 'Private OID'
+        '1' => '1 - RSA/MD5',
+        '2' => '2 - Diffie-Hellman',
+        '3' => '3 - DSA/SHA-1',
+        '4' => '4 - Elliptic Curve',
+        '5' => '5 - RSA/SHA-1',
+        '6' => '6 - DSA-NSEC3-SHA1',
+        '7' => '7 - RSASHA1-NSEC3-SHA1',
+        '8' => '8 - RSA/SHA-256',
+        '10' => '10 - RSA/SHA-512',
+        '12' => '12 - ECC-GOST',
+        '13' => '13 - ECDSA Curve P-256 with SHA-256',
+        '14' => '14 - ECDSA Curve P-384 with SHA-384',
+        '252' => '252 - Indirect',
+        '253' => '253 - Private DNS',
+        '254' => '254 - Private OID'
     ]
 ]);

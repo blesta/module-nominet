@@ -19,11 +19,17 @@ class Nominet extends RegistrarModule
     private $api_connections = [];
 
     /**
-     * @var array An array containing the EPP servers for live and sandbox requests
+     * @var array An array containing the EPP servers for live and testbed requests
      */
     private $endpoint = [
-        'live' => ['server' => 'epp.nominet.org.uk', 'port' => 700],
-        'sandbox' => ['server' => 'testbed-epp.nominet.org.uk', 'port' => 700]
+        'live' => [
+            'secure' => ['server' => 'epp.nominet.org.uk', 'port' => 700],
+            'insecure' => ['server' => 'epp.nominet.org.uk', 'port' => 8700]
+        ],
+        'testbed' => [
+            'secure' => ['server' => 'testbed-epp.nominet.org.uk', 'port' => 700],
+            'insecure' => ['server' => 'testbed-epp.nominet.org.uk', 'port' => 8700]
+        ]
     ];
 
     /**
@@ -44,7 +50,7 @@ class Nominet extends RegistrarModule
     }
 
     /**
-     * Performs any necessary bootstrapping actions on install.
+     * Performs any necessary bootstraping actions
      */
     public function install()
     {
@@ -53,28 +59,42 @@ class Nominet extends RegistrarModule
 
     /**
      * Performs migration of data from $current_version (the current installed version)
-     * to the given file set version.
+     * to the given file set version. Sets Input errors on failure, preventing
+     * the module from being upgraded.
      *
      * @param string $current_version The current installed version of this module
      */
     public function upgrade($current_version)
     {
+        // Upgrade if possible
         if (version_compare($this->getVersion(), $current_version, '>')) {
-            // The process_poll cron task was introduced alongside this migration;
-            // register it for any install upgrading from a version that doesn't
-            // already have it, regardless of what other migrations it may have
-            // already picked up along the way (e.g. from another module update)
-            if (version_compare($current_version, '2.0.3', '<')) {
+            // Upgrade: add the pending transfer recheck cron task
+            if (version_compare($current_version, '2.0.2', '<')) {
                 $this->addCronTasks($this->getCronTasks());
+            }
+
+            // Upgrade: rename the 'sandbox' account meta key to 'testbed'
+            if (version_compare($current_version, '2.0.2', '<')) {
+                if (!isset($this->Record)) {
+                    Loader::loadComponents($this, ['Record']);
+                }
+
+                $rows = $this->getModuleRows() ?: [];
+                foreach ($rows as $row) {
+                    $this->Record->where('module_row_id', '=', $row->id)
+                        ->where('key', '=', 'sandbox')
+                        ->update('module_row_meta', ['key' => 'testbed']);
+                }
             }
         }
     }
 
     /**
-     * Performs any necessary cleanup actions when the module is uninstalled.
+     * Performs any necessary cleanup actions
      *
      * @param int $module_id The ID of the module being uninstalled
-     * @param bool $last_instance True if this is the last instance of the module across companies
+     * @param bool $last_instance True if $module_id is the last instance
+     *  across all companies for this module, false otherwise
      */
     public function uninstall($module_id, $last_instance)
     {
@@ -83,6 +103,7 @@ class Nominet extends RegistrarModule
         $cron_tasks = $this->getCronTasks();
 
         if ($last_instance) {
+            // Remove the cron tasks
             foreach ($cron_tasks as $task) {
                 $cron_task = $this->CronTasks->getByKey($task['key'], $task['dir'], $task['task_type']);
                 if ($cron_task) {
@@ -91,8 +112,10 @@ class Nominet extends RegistrarModule
             }
         }
 
+        // Remove individual cron task runs
         foreach ($cron_tasks as $task) {
-            $cron_task_run = $this->CronTasks->getTaskRunByKey($task['key'], $task['dir'], false, $task['task_type']);
+            $cron_task_run = $this->CronTasks
+                ->getTaskRunByKey($task['key'], $task['dir'], false, $task['task_type']);
             if ($cron_task_run) {
                 $this->CronTasks->deleteTaskRun($cron_task_run->task_run_id);
             }
@@ -100,18 +123,154 @@ class Nominet extends RegistrarModule
     }
 
     /**
-     * Runs the cron task identified by the given key.
+     * Runs the cron task identified by the key used to create the cron task
      *
-     * @param string $key The cron task key
-     * @return mixed The result of the cron task
+     * @param string $key The key used to create the cron task
+     * @see CronTasks::add()
      */
     public function cron($key)
     {
-        if ($key === 'process_poll') {
-            return $this->processPollQueue();
+        switch ($key) {
+            case 'check_pending_transfers':
+                $this->checkPendingTransfers();
+                break;
+            case 'process_poll':
+                $this->processPollQueue();
+                break;
+        }
+    }
+
+    /**
+     * Retrieves cron tasks available to this module along with their default values
+     *
+     * @return array A list of cron tasks
+     */
+    private function getCronTasks()
+    {
+        return [
+            [
+                'key' => 'check_pending_transfers',
+                'task_type' => 'module',
+                'dir' => 'nominet',
+                'name' => Language::_('Nominet.getCronTasks.check_pending_transfers_name', true),
+                'description' => Language::_('Nominet.getCronTasks.check_pending_transfers_desc', true),
+                'type' => 'interval',
+                'type_value' => 1440,
+                'enabled' => 1
+            ]
+        ];
+    }
+
+    /**
+     * Attempts to add new cron tasks for this module
+     *
+     * @param array $tasks A list of cron tasks to add
+     */
+    private function addCronTasks(array $tasks)
+    {
+        Loader::loadModels($this, ['CronTasks']);
+        foreach ($tasks as $task) {
+            $task_id = $this->CronTasks->add($task);
+
+            if (!$task_id) {
+                $cron_task = $this->CronTasks->getByKey($task['key'], $task['dir'], $task['task_type']);
+                if ($cron_task) {
+                    $task_id = $cron_task->id;
+                }
+            }
+
+            if ($task_id) {
+                // CronTasks::addTaskRun() inserts without any uniqueness check, so adding a
+                // run for a task that already has one silently duplicates it and the task
+                // then runs twice per interval. Only add a run if none exists yet - this
+                // matters when re-registering a task an earlier version already installed.
+                $existing_run = $this->CronTasks
+                    ->getTaskRunByKey($task['key'], $task['dir'], false, $task['task_type']);
+
+                if (!$existing_run) {
+                    $task_vars = ['enabled' => $task['enabled']];
+                    if ($task['type'] === 'time') {
+                        $task_vars['time'] = $task['type_value'];
+                    } else {
+                        $task_vars['interval'] = $task['type_value'];
+                    }
+
+                    $this->CronTasks->addTaskRun($task_id, $task_vars);
+                }
+            }
+        }
+    }
+
+    /**
+     * Rechecks .uk domains awaiting re-tag confirmation and activates any service
+     * whose sponsoring registrar (IPS tag) now matches this account. Nothing else
+     * ever re-invokes transferDomain() once a transfer is marked pending, so this
+     * cron task is the only mechanism that flips a pending .uk transfer to active.
+     */
+    private function checkPendingTransfers()
+    {
+        if (empty($this->module->id)) {
+            return;
         }
 
-        return [];
+        Loader::loadModels($this, ['Services']);
+
+        $pending_services = $this->Services->searchServiceFields($this->module->id, 'transfer_pending', '1');
+
+        foreach ($pending_services as $pending_service) {
+            $service = $this->Services->get($pending_service->id);
+            if (!$service) {
+                continue;
+            }
+
+            $row = $this->getModuleRow($service->module_row_id);
+            if (!$row) {
+                continue;
+            }
+
+            $domain = $this->getServiceDomain($service);
+            if (!$domain) {
+                continue;
+            }
+
+            if ($this->isDomainTaggedToAccount($domain, $row)) {
+                // Re-tag confirmed: activate the service and clear the pending flag so
+                // this service is not rechecked again
+                if (($service->status ?? null) === 'pending') {
+                    $this->Services->edit($service->id, ['status' => 'active'], true);
+                }
+                $this->Services->editField($service->id, ['key' => 'transfer_pending', 'value' => '0']);
+
+                $this->log(
+                    $row->meta->username . '|checkPendingTransfers',
+                    json_encode(['domain' => $domain, 'result' => 'confirmed']),
+                    'output',
+                    true
+                );
+
+                continue;
+            }
+
+            // Not yet re-tagged. Surface a staff-visible warning once the request has been
+            // outstanding beyond a reasonable window, rather than leaving it silently pending
+            // forever with no indication anything is wrong.
+            $service_fields = $this->serviceFieldsToObject($service->fields ?? []);
+            $requested_date = $service_fields->transfer_requested_date ?? null;
+            $timed_out = $requested_date && strtotime($requested_date) < strtotime('-14 days');
+
+            $this->log(
+                $row->meta->username . '|checkPendingTransfers',
+                json_encode([
+                    'domain' => $domain,
+                    'result' => $timed_out ? 'timeout' : 'pending',
+                    'message' => $timed_out
+                        ? 'Re-tag has not completed within 14 days of the transfer request'
+                        : 'Awaiting registrar re-tag confirmation'
+                ]),
+                'output',
+                !$timed_out
+            );
+        }
     }
 
     /**
@@ -192,7 +351,7 @@ class Nominet extends RegistrarModule
 
         if (!empty($vars)) {
             // Set unset checkboxes
-            $checkbox_fields = ['secure', 'sandbox', 'poll_enabled'];
+            $checkbox_fields = ['secure', 'testbed', 'poll_enabled'];
 
             foreach ($checkbox_fields as $checkbox_field) {
                 if (!isset($vars[$checkbox_field])) {
@@ -236,7 +395,7 @@ class Nominet extends RegistrarModule
             $vars = $module_row->meta;
         } else {
             // Set unset checkboxes
-            $checkbox_fields = ['secure', 'sandbox', 'poll_enabled'];
+            $checkbox_fields = ['secure', 'testbed', 'poll_enabled'];
 
             foreach ($checkbox_fields as $checkbox_field) {
                 if (!isset($vars[$checkbox_field])) {
@@ -271,11 +430,11 @@ class Nominet extends RegistrarModule
      */
     public function addModuleRow(array &$vars)
     {
-        $meta_fields = ['username', 'password', 'secure', 'sandbox', 'poll_enabled'];
+        $meta_fields = ['username', 'password', 'secure', 'testbed', 'cost_price', 'poll_enabled'];
         $encrypted_fields = ['password'];
 
         // Set unset checkboxes
-        $checkbox_fields = ['secure', 'sandbox', 'poll_enabled'];
+        $checkbox_fields = ['secure', 'testbed', 'poll_enabled'];
 
         foreach ($checkbox_fields as $checkbox_field) {
             if (!isset($vars[$checkbox_field])) {
@@ -317,11 +476,11 @@ class Nominet extends RegistrarModule
      */
     public function editModuleRow($module_row, array &$vars)
     {
-        $meta_fields = ['username', 'password', 'secure', 'sandbox', 'poll_enabled'];
+        $meta_fields = ['username', 'password', 'secure', 'testbed', 'cost_price', 'poll_enabled'];
         $encrypted_fields = ['password'];
 
         // Set unset checkboxes
-        $checkbox_fields = ['secure', 'sandbox', 'poll_enabled'];
+        $checkbox_fields = ['secure', 'testbed', 'poll_enabled'];
 
         foreach ($checkbox_fields as $checkbox_field) {
             if (!isset($vars[$checkbox_field])) {
@@ -357,6 +516,11 @@ class Nominet extends RegistrarModule
      */
     private function getRowRules(&$vars)
     {
+        // Treat an empty cost_price as unset so it defaults to no cost price override
+        if (isset($vars['cost_price']) && $vars['cost_price'] === '') {
+            unset($vars['cost_price']);
+        }
+
         $rules = [
             'username' => [
                 'valid' => [
@@ -376,7 +540,7 @@ class Nominet extends RegistrarModule
                         [$this, 'validateConnection'],
                         $vars['username'],
                         $vars['secure'],
-                        $vars['sandbox']
+                        $vars['testbed']
                     ],
                     'message' => Language::_('Nominet.!error.password.valid_connection', true)
                 ]
@@ -387,10 +551,17 @@ class Nominet extends RegistrarModule
                     'message' => Language::_('Nominet.!error.secure.format', true)
                 ]
             ],
-            'sandbox' => [
+            'testbed' => [
                 'format' => [
                     'rule' => ['in_array', ['true', 'false']],
-                    'message' => Language::_('Nominet.!error.sandbox.format', true)
+                    'message' => Language::_('Nominet.!error.testbed.format', true)
+                ]
+            ],
+            'cost_price' => [
+                'format' => [
+                    'if_set' => true,
+                    'rule' => ['matches', '/^\d+(\.\d{1,4})?$/'],
+                    'message' => Language::_('Nominet.!error.cost_price.format', true)
                 ]
             ],
             'poll_enabled' => [
@@ -410,20 +581,20 @@ class Nominet extends RegistrarModule
      * @param string $password The Nominet password
      * @param string $username The Nominet userbane
      * @param string $secure 'true' to use a secure connection
-     * @param string $sandbox 'true' to use the sandbox server
+     * @param string $testbed 'true' to use the testbed server
      * @return bool True if the connection is valid, false otherwise
      */
-    public function validateConnection($password, $username, $secure = 'false', $sandbox = 'false')
+    public function validateConnection($password, $username, $secure = 'false', $testbed = 'false')
     {
         $this->log(
             $username . '|validateConnection',
-            json_encode(compact('username', 'secure', 'sandbox')),
+            json_encode(compact('username', 'secure', 'testbed')),
             'input',
             true
         );
 
         try {
-            $api = $this->getApi($username, $password, $secure, $sandbox);
+            $api = $this->getApi($username, $password, $secure, $testbed);
 
             // Check with the credentials with the EPP server
             $availability = $this->request($api, new Metaregistrar\EPP\eppCheckDomainRequest(['nominet.org.uk']));
@@ -738,7 +909,9 @@ class Nominet extends RegistrarModule
         $parent_service = null,
         $status = 'pending'
     ) {
-        if (($row = $this->getModuleRowById($package->module_row ?? null))) {
+        $is_transfer = $this->isTransfer((array) $vars);
+
+        if (($row = $this->getModuleRow())) {
             // Validate service
             $this->validateService($package, $vars);
             if ($this->Input->errors()) {
@@ -750,39 +923,50 @@ class Nominet extends RegistrarModule
 
             // Only provision the service if 'use_module' is true
             if ($vars['use_module'] == 'true') {
-                // Get contact from client
-                if (!isset($this->Clients)) {
-                    Loader::loadModels($this, ['Clients']);
-                }
-                if (!isset($this->Contacts)) {
-                    Loader::loadModels($this, ['Contacts']);
-                }
+                if ($is_transfer) {
+                    // .uk domains are transferred by the current registrar re-tagging them to
+                    // our IPS tag, so there is nothing to register. Hold the service until the
+                    // re-tag is confirmed; the check_pending_transfers cron task activates it
+                    if (!$this->transferDomain($vars['domain'], $row->id, $vars)) {
+                        $this->setTransferPending($vars['domain']);
 
-                $client = $this->Clients->get($vars['client_id']);
-                if ($client) {
-                    $contact_numbers = $this->Contacts->getNumbers($client->contact_id);
-                }
+                        return;
+                    }
+                } else {
+                    // Get contact from client
+                    if (!isset($this->Clients)) {
+                        Loader::loadModels($this, ['Clients']);
+                    }
+                    if (!isset($this->Contacts)) {
+                        Loader::loadModels($this, ['Contacts']);
+                    }
 
-                // Register domain
-                $params = [
-                    'contact' => [
-                        'org_name' => $client->company ?? '',
-                        'first_name' => $client->first_name ?? '',
-                        'last_name' => $client->last_name ?? '',
-                        'address1' => $client->address1 ?? '',
-                        'city' => $client->city ?? '',
-                        'state' => $client->state ?? '',
-                        'zip' => $client->zip ?? '',
-                        'country' => $client->country ?? '',
-                        'email' => $client->email ?? '',
-                        'phone' => $this->formatPhone(
-                            isset($contact_numbers[0]) ? $contact_numbers[0]->number : null,
-                            $client->country
-                        )
-                    ],
-                    'ns' => $vars['ns'] ?? (array) $package->meta->ns
-                ];
-                $this->registerDomain($vars['domain'], $row->id, $params);
+                    $client = $this->Clients->get($vars['client_id']);
+                    if ($client) {
+                        $contact_numbers = $this->Contacts->getNumbers($client->contact_id);
+                    }
+
+                    // Register domain
+                    $params = [
+                        'contact' => [
+                            'org_name' => $client->company ?? '',
+                            'first_name' => $client->first_name ?? '',
+                            'last_name' => $client->last_name ?? '',
+                            'address1' => $client->address1 ?? '',
+                            'city' => $client->city ?? '',
+                            'state' => $client->state ?? '',
+                            'zip' => $client->zip ?? '',
+                            'country' => $client->country ?? '',
+                            'email' => $client->email ?? '',
+                            'phone' => $this->formatPhone(
+                                isset($contact_numbers[0]) ? $contact_numbers[0]->number : null,
+                                $client->country
+                            )
+                        ],
+                        'ns' => $vars['ns'] ?? (array) $package->meta->ns
+                    ];
+                    $this->registerDomain($vars['domain'], $row->id, $params);
+                }
             }
         } else {
             $this->Input->setErrors(
@@ -791,7 +975,7 @@ class Nominet extends RegistrarModule
         }
 
         // Return service fields
-        return [
+        $fields = [
             [
                 'key' => 'domain',
                 'value' => $vars['domain'],
@@ -803,6 +987,14 @@ class Nominet extends RegistrarModule
                 'encrypted' => 0
             ]
         ];
+
+        // Keep the transfer marker with the service so later provisioning runs, and the
+        // check_pending_transfers cron task, can tell a re-tag transfer from a registration
+        if ($is_transfer) {
+            $fields[] = ['key' => 'transfer', 'value' => '1', 'encrypted' => 0];
+        }
+
+        return $fields;
     }
 
     /**
@@ -825,31 +1017,49 @@ class Nominet extends RegistrarModule
      */
     public function editService($package, $service, ?array $vars = null, $parent_package = null, $parent_service = null)
     {
-        $row = $this->getModuleRowById($service->module_row_id ?? $package->module_row ?? null);
-        if (!$row) {
+        $service_fields = $this->serviceFieldsToObject($service->fields);
+
+        if (($row = $this->getModuleRow())) {
+            $this->validateService($package, $vars, true);
+            if ($this->Input->errors()) {
+                return;
+            }
+
+            // Format input
+            $vars = $this->getFieldsFromInput($vars, $package);
+
+            // Only update the service if 'use_module' is true
+            if ($vars['use_module'] == 'true') {
+                // Update nameservers
+                if (isset($vars['ns']) && is_array($vars['ns'])) {
+                    $this->setDomainNameservers($this->getServiceDomain($service), $row->id, $vars['ns']);
+                }
+            }
+        } else {
             $this->Input->setErrors(
                 ['module_row' => ['missing' => Language::_('Nominet.!error.module_row.missing', true)]]
             );
-            return;
         }
 
-        $this->validateService($package, $vars, true);
-        if ($this->Input->errors()) {
-            return;
-        }
+        // Return all the service fields. Blesta replaces every service field with what is
+        // returned here, so the transfer fields must be given back or a service edit would
+        // drop them and the pending transfer would stop being tracked
+        $encrypted_fields = [];
+        $return = [];
+        $fields = ['domain', 'enable_tag', 'transfer', 'transfer_pending', 'transfer_requested_date'];
+        foreach ($fields as $field) {
+            $value = $vars[$field] ?? ($service_fields->{$field} ?? null);
 
-        // Format input
-        $vars = $this->getFieldsFromInput($vars, $package);
-
-        // Only update the service if 'use_module' is true
-        if ($vars['use_module'] == 'true') {
-            // Update nameservers
-            if (isset($vars['ns']) && is_array($vars['ns'])) {
-                $this->setDomainNameservers($this->getServiceDomain($service), $row->id, $vars['ns']);
+            if ($value !== null) {
+                $return[] = [
+                    'key' => $field,
+                    'value' => $value,
+                    'encrypted' => (in_array($field, $encrypted_fields) ? 1 : 0)
+                ];
             }
         }
 
-        return null;
+        return $return;
     }
 
     /**
@@ -1206,11 +1416,6 @@ class Nominet extends RegistrarModule
             'tabSettings' => Language::_('Nominet.tab_settings.title', true)
         ];
 
-        // Check if DNS Management is enabled
-        if (!$this->featureServiceEnabled('dns_management', $service)) {
-            unset($tabs['tabDnssec']);
-        }
-
         // Determine if this service has access to the settings tab
         $service_fields = $this->serviceFieldsToObject($service->fields);
         $ips_tag = $service_fields->enable_tag ?? '0';
@@ -1247,11 +1452,6 @@ class Nominet extends RegistrarModule
             'tabClientDnssec' => Language::_('Nominet.tab_client_dnssec.title', true),
             'tabClientSettings' => Language::_('Nominet.tab_client_settings.title', true)
         ];
-
-        // Check if DNS Management is enabled
-        if (!$this->featureServiceEnabled('dns_management', $service)) {
-            unset($tabs['tabClientDnssec']);
-        }
 
         // Determine if this service has access to the settings tab
         $service_fields = $this->serviceFieldsToObject($service->fields);
@@ -1616,14 +1816,6 @@ class Nominet extends RegistrarModule
         // Get service fields
         $service_fields = $this->serviceFieldsToObject($service->fields);
 
-        // Fetch domain DNSSEC
-        $dnssec = [];
-        try {
-            $dnssec = $this->getDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null);
-        } catch (Throwable $e) {
-            $this->Input->setErrors(['errors' => ['dnssec' => $e->getMessage()]]);
-        }
-
         // Delete exist record
         if (!empty($post) && (($post['action'] ?? 'add') == 'delete')) {
             $this->deleteDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null, $post);
@@ -1633,6 +1825,14 @@ class Nominet extends RegistrarModule
         if (!empty($post) && (($post['action'] ?? 'add') !== 'delete')) {
             $this->addDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null, $post);
             $vars = (object) $post;
+        }
+
+        // Fetch domain DNSSEC after any modifications
+        $dnssec = [];
+        try {
+            $dnssec = $this->getDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null);
+        } catch (Throwable $e) {
+            $this->Input->setErrors(['errors' => ['dnssec' => $e->getMessage()]]);
         }
 
         $this->view->set('service_fields', $service_fields);
@@ -1692,6 +1892,14 @@ class Nominet extends RegistrarModule
         if (!empty($post) && (($post['action'] ?? 'add') !== 'delete')) {
             $this->addDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null, $post);
             $vars = (object) $post;
+        }
+
+        // Fetch domain DNSSEC after any modifications
+        $dnssec = [];
+        try {
+            $dnssec = $this->getDnssec($service_fields->domain, $service->module_row_id ?? $package->module_row ?? null);
+        } catch (Throwable $e) {
+            $this->Input->setErrors(['errors' => ['dnssec' => $e->getMessage()]]);
         }
 
         $this->view->set('service_fields', $service_fields);
@@ -1827,7 +2035,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         // Check with the EPP server if the domain is available
         $availability = $this->request($api, new Metaregistrar\EPP\eppCheckDomainRequest([$domain]));
@@ -1854,8 +2062,33 @@ class Nominet extends RegistrarModule
      */
     public function checkTransferAvailability($domain, $module_row_id = null)
     {
-        // Nominet transfers operates as “push” transfers requested by the current registrar,
-        // therefore we cannot request a transfer as is not included in Nominet's standard EPP implementation.
+        // .uk transfers are done via IPS tag change (re-tagging by the current registrar),
+        // not standard EPP pull transfers. A domain is available for this process if it
+        // is already registered (i.e., not available for new registration).
+        $row = $this->getModuleRow($module_row_id);
+        if (!$row) {
+            return false;
+        }
+
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
+        $availability = $this->request($api, new Metaregistrar\EPP\eppCheckDomainRequest([$domain]));
+
+        if ($availability == false) {
+            return false;
+        }
+
+        $checks = $availability->getCheckedDomains();
+        foreach ($checks as $check) {
+            // Domain can be re-tagged (transferred) if it is already registered
+            if ($check['available'] ?? true) {
+                return false;
+            }
+
+            // Guard against creating a duplicate service for a domain that is already
+            // tagged to this account: there is nothing to transfer in that case
+            return !$this->isDomainTaggedToAccount($domain, $row);
+        }
+
         return false;
     }
 
@@ -1874,7 +2107,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return [];
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -1926,7 +2159,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -1969,7 +2202,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2032,17 +2265,21 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         // Add contact
         $contact_id = null;
         if (isset($vars['contact'])) {
+            if (empty($vars['contact']['company'])) {
+                $vars['contact']['company'] = null;
+            }
+
             $contact = new Metaregistrar\EPP\eppContact(
                 new Metaregistrar\EPP\eppContactPostalInfo(
                     $this->Html->concat(' ', ($vars['contact']['first_name'] ?? ''), ($vars['contact']['last_name'] ?? '')),
                     $vars['contact']['city'] ?? '',
                     $vars['contact']['country'] ?? '',
-                    $vars['contact']['org_name'] ?? '',
+                    $vars['contact']['company'] ?? '',
                     $vars['contact']['address1'] ?? '',
                     $vars['contact']['state'] ?? '',
                     $vars['contact']['zip'] ?? '',
@@ -2077,6 +2314,17 @@ class Nominet extends RegistrarModule
         );
         $register->setAuthorisationCode($this->generatePassword(6, 8));
 
+        // Set contact
+        $update = new NominetEppDomain($domain);
+        if ($contact_id) {
+            $update->setRegistrant($contact_id);
+        }
+
+        $this->request(
+            $api,
+            new Metaregistrar\EPP\eppUpdateDomainRequest(new Metaregistrar\EPP\eppDomain($domain), null, null, $update)
+        );
+
         // Set nameservers
         if (isset($vars['ns']) && is_array($vars['ns'])) {
             foreach ($vars['ns'] as $nameserver) {
@@ -2109,7 +2357,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         // Renew the domain
         $renew = new Metaregistrar\EPP\eppDomain($domain);
@@ -2164,14 +2412,173 @@ class Nominet extends RegistrarModule
      */
     public function transferDomain($domain, $module_row_id = null, array $vars = [])
     {
-        // Nominet transfers operates as “push” transfers requested by the current registrar,
-        // therefore we cannot request a transfer as is not included in Nominet's standard EPP implementation.
-        // See Nominet::pushDomain()
-        if (isset($this->Input)) {
-            $this->Input->setErrors($this->getCommonError('unsupported'));
+        // .uk transfers are not standard EPP pull transfers. The current registrar must
+        // re-tag the domain to our IPS tag out-of-band; there is no EPP command we can
+        // send to make this happen. The transfer is therefore only successful once the
+        // re-tag is confirmed by a live domain:info lookup - never assume it happened just
+        // because the transfer was requested, otherwise the service gets provisioned (and
+        // billed as active) for a domain the customer may not yet control.
+        $row = $this->getModuleRow($module_row_id);
+        if (!$row) {
+            $this->Input->setErrors(
+                ['module_row' => ['missing' => Language::_('Nominet.!error.module_row.missing', true)]]
+            );
+
+            return false;
+        }
+
+        if ($this->isDomainTaggedToAccount($domain, $row)) {
+            $this->log(
+                $row->meta->username . '|transferDomain',
+                json_encode(['domain' => $domain, 'result' => 'confirmed']),
+                'output',
+                true
+            );
+
+            return true;
+        }
+
+        $service = $this->getServiceByDomain($domain);
+
+        // Not yet re-tagged. Surface a staff-visible warning once the request has been
+        // outstanding beyond a reasonable window, rather than leaving it silently pending
+        // forever with no indication anything is wrong.
+        $timed_out = false;
+        if ($service) {
+            $service_fields = $this->serviceFieldsToObject($service->fields ?? []);
+            $requested_date = $service_fields->transfer_requested_date ?? null;
+            $timed_out = $requested_date && strtotime($requested_date) < strtotime('-14 days');
+        }
+
+        $this->log(
+            $row->meta->username . '|transferDomain',
+            json_encode([
+                'domain' => $domain,
+                'result' => $timed_out ? 'timeout' : 'pending',
+                'message' => $timed_out
+                    ? 'Re-tag has not completed within 14 days of the transfer request'
+                    : 'Awaiting registrar re-tag confirmation'
+            ]),
+            'output',
+            !$timed_out
+        );
+
+        // Setting an error keeps the service from being provisioned, leaving it pending
+        // until the re-tag lands. Blesta gives up retrying after the maximum number of
+        // provisioning attempts, so the check_pending_transfers cron task is what
+        // ultimately activates the service
+        $error = ($timed_out ? 'timeout' : 'pending');
+        $this->Input->setErrors([
+            'transfer' => [$error => Language::_('Nominet.!error.transfer.' . $error, true, $domain)]
+        ]);
+
+        return false;
+    }
+
+    /**
+     * Determines whether a domain's current sponsoring registrar (IPS tag) matches
+     * this account, i.e. whether a pending .uk re-tag transfer has completed.
+     *
+     * @param string $domain The domain to check
+     * @param stdClass $row The module row representing the account to check against
+     * @return bool True if the domain is currently tagged to this account
+     */
+    private function isDomainTaggedToAccount($domain, $row)
+    {
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
+
+        $info = $this->request(
+            $api,
+            new Metaregistrar\EPP\eppInfoDomainRequest(new Metaregistrar\EPP\eppDomain($domain))
+        );
+
+        if (!$info) {
+            return false;
+        }
+
+        // Nominet's EPP gateway reports the domain's current IPS tag as the standard EPP
+        // sponsoring client ID (clID); the re-tag is complete once it matches our own tag
+        return strcasecmp((string) $info->getDomainClientId(), (string) $row->meta->username) === 0;
+    }
+
+    /**
+     * Determines whether the given service vars represent a domain transfer. The order
+     * form posts 'transfer' as "true", the domain manager as "1", and the marker is kept
+     * as a service field so later provisioning runs still recognize the transfer.
+     *
+     * @param array $vars An array of user supplied info to satisfy the request
+     * @return bool True if the service is a domain transfer
+     */
+    private function isTransfer(array $vars)
+    {
+        $transfer = (string) ($vars['transfer'] ?? '');
+
+        if (!in_array($transfer, ['', '0', 'false'], true) || !empty($vars['transfer_pending'])) {
+            return true;
+        }
+
+        // Blesta does not always pass the submitted fields back when a pending service is
+        // provisioned, so fall back to the marker stored with the service
+        $service = empty($vars['domain']) ? null : $this->getServiceByDomain($vars['domain']);
+
+        if ($service && $service->status == 'pending') {
+            $service_fields = $this->serviceFieldsToObject($service->fields ?? []);
+
+            return !empty($service_fields->transfer) || !empty($service_fields->transfer_pending);
         }
 
         return false;
+    }
+
+    /**
+     * Flags the service for the given domain as awaiting re-tag confirmation, so the
+     * check_pending_transfers cron task can activate it once the re-tag completes. The
+     * fields are written directly because addService() reports an error while the
+     * transfer is outstanding, and Blesta only stores returned fields on success.
+     *
+     * @param string $domain The domain awaiting the re-tag
+     */
+    private function setTransferPending($domain)
+    {
+        if (!($service = $this->getServiceByDomain($domain))) {
+            return;
+        }
+
+        $service_fields = $this->serviceFieldsToObject($service->fields ?? []);
+
+        $this->Services->editField($service->id, ['key' => 'transfer', 'value' => '1']);
+        $this->Services->editField($service->id, ['key' => 'transfer_pending', 'value' => '1']);
+
+        if (empty($service_fields->transfer_requested_date)) {
+            $this->Services->editField(
+                $service->id,
+                ['key' => 'transfer_requested_date', 'value' => date('Y-m-d H:i:s')]
+            );
+        }
+    }
+
+    /**
+     * Looks up the Blesta service associated with a domain managed by this module.
+     *
+     * @param string $domain The domain name to look up
+     * @return stdClass|null The matching service, or null if none was found
+     */
+    private function getServiceByDomain($domain)
+    {
+        if (!isset($this->module) || empty($this->module->id)) {
+            return null;
+        }
+
+        Loader::loadModels($this, ['Services']);
+        $services = $this->Services->searchServiceFields($this->module->id, 'domain', $domain);
+
+        if (empty($services[0])) {
+            return null;
+        }
+
+        // searchServiceFields() returns bare service rows without ->fields populated;
+        // re-fetch so callers reading service fields (e.g. transfer_requested_date) see them
+        return $this->Services->get($services[0]->id) ?: null;
     }
 
     /**
@@ -2190,7 +2597,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppUpdateDomainRequest', json_encode(compact('domain', 'vars')), 'input', true);
 
@@ -2232,7 +2639,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return [];
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2310,7 +2717,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2350,7 +2757,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return [];
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2399,7 +2806,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppUpdateDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2495,7 +2902,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain', 'vars')), 'input', true);
 
@@ -2597,7 +3004,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain', 'vars')), 'input', true);
 
@@ -2663,7 +3070,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|setNameserverIps', json_encode(compact('vars')), 'input', true);
 
@@ -2744,7 +3151,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppUpdateDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2778,7 +3185,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppUpdateDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2819,7 +3226,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return [];
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppInfoDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -2863,7 +3270,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppDnssecUpdateDomainRequest', json_encode(compact('domain', 'vars')), 'input', true);
 
@@ -2914,7 +3321,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppDnssecUpdateDomainRequest', json_encode(compact('domain', 'vars')), 'input', true);
 
@@ -3005,7 +3412,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppDeleteContactRequest', json_encode(compact('contact_id')), 'input', true);
 
@@ -3029,7 +3436,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return [];
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $messages = [];
 
@@ -3506,10 +3913,10 @@ class Nominet extends RegistrarModule
      * @param string $password The Nominet password
      * @param string $username The Nominet userbane
      * @param string $secure 'true' to use a secure connection
-     * @param string $sandbox 'true' to use the sandbox server
+     * @param string $testbed 'true' to use the testbed server
      * @return NominetEppConnection The NominetApi connection to the EPP server
      */
-    private function getApi($username, $password, $secure = 'false', $sandbox = 'false')
+    private function getApi($username, $password, $secure = 'false', $testbed = 'false')
     {
         if (empty($username)) {
             throw new \RuntimeException(
@@ -3539,11 +3946,12 @@ class Nominet extends RegistrarModule
 
         $connection = new NominetEppConnection();
 
-        // Nominet requires SSL/TLS on port 700 for all environments
-        $hostname = $this->endpoint[$env]['server'];
-        $port = $this->endpoint[$env]['port'];
+        // Set Hostname
+        $hostname = $this->endpoint[($testbed == 'true' ? 'testbed' : 'live')][($secure == 'true' ? 'secure' : 'insecure')]['server'];
+        $connection->setHostname(($secure == 'true' ? 'ssl://' : '') . $hostname);
 
-        $connection->setHostname('ssl://' . $hostname);
+        // Set port
+        $port = $this->endpoint[($testbed == 'true' ? 'testbed' : 'live')][($secure == 'true' ? 'secure' : 'insecure')]['port'];
         $connection->setPort($port);
 
         // Set credentials
@@ -3554,7 +3962,7 @@ class Nominet extends RegistrarModule
         $this->log($username . '|login', json_encode(compact('hostname', 'username', 'port')), 'input', true);
 
         try {
-            if (!$connection->login()) {
+            if (!$connection->login(true)) {
                 throw new \RuntimeException('Login failed or connection could not be established');
             }
         } catch (Throwable $e) {
@@ -3587,5 +3995,112 @@ class Nominet extends RegistrarModule
             }
         }
         $this->api_connections = [];
+    }
+
+    /**
+     * Get a list of the TLD prices
+     *
+     * @param int $module_row_id The ID of the module row to fetch for the current module
+     * @return array A list of all TLDs and their pricing
+     *    [tld => [currency => [year# => ['register' => price, 'transfer' => price, 'renew' => price]]]]
+     */
+    public function getTldPricing($module_row_id = null)
+    {
+        return $this->getFilteredTldPricing($module_row_id);
+    }
+
+    /**
+     * Get a filtered list of the TLD prices
+     *
+     * @param int $module_row_id The ID of the module row to fetch for the current module
+     * @param array $filters A list of criteria by which to filter fetched pricings including:
+     *  - tlds A list of tlds for which to fetch pricings
+     *  - currencies A list of currencies for which to fetch pricings
+     *  - terms A list of terms for which to fetch pricings
+     * @return array A list of all TLDs and their pricing
+     *    [tld => [currency => [year# => ['register' => price, 'transfer' => price, 'renew' => price]]]]
+     */
+    public function getFilteredTldPricing($module_row_id = null, $filters = [])
+    {
+        // Get cost_price from the specified row, or the first available row
+        if ($module_row_id !== null) {
+            $row = $this->getModuleRow($module_row_id);
+        } else {
+            $rows = $this->getModuleRows();
+            $row = $rows[0] ?? null;
+        }
+
+        if ($row === null) {
+            return [];
+        }
+
+        $cost_price = (float) ($row->meta->cost_price ?? 0);
+
+        if ($cost_price <= 0) {
+            return [];
+        }
+
+        Loader::loadModels($this, ['Currencies']);
+
+        $company_id = Configure::get('Blesta.company_id');
+        $cost_currency = $this->Currencies->get('GBP', $company_id);
+
+        // Nominet bills in GBP. Currencies::convert() returns the amount unchanged when the
+        // currency it converts from is not set up for the company, and divides by its
+        // exchange rate, so without both the cost price would be published as-is under
+        // every currency
+        if (empty($cost_currency) || $cost_currency->exchange_rate <= 0) {
+            $this->log(
+                $row->meta->username . '|getFilteredTldPricing',
+                json_encode([
+                    'result' => 'error',
+                    'message' => Language::_('Nominet.!error.cost_price.currency', true)
+                ]),
+                'output',
+                false
+            );
+
+            return [];
+        }
+
+        $tlds = Configure::get('Nominet.tlds');
+        $currencies = $this->Currencies->getAll($company_id);
+        $pricing = [];
+
+        foreach ($tlds as $tld) {
+            if (isset($filters['tlds']) && !in_array($tld, $filters['tlds'])) {
+                continue;
+            }
+
+            $pricing[$tld] = [];
+
+            foreach ($currencies as $currency) {
+                if (isset($filters['currencies']) && !in_array($currency->code, $filters['currencies'])) {
+                    continue;
+                }
+
+                $converted = $this->Currencies->convert($cost_price, 'GBP', $currency->code, $company_id);
+
+                if (!$converted) {
+                    continue;
+                }
+
+                $pricing[$tld][$currency->code] = [];
+
+                foreach (range(1, 10) as $years) {
+                    if (isset($filters['terms']) && !in_array($years, $filters['terms'])) {
+                        continue;
+                    }
+
+                    $pricing[$tld][$currency->code][$years] = [
+                        'register' => $converted * $years,
+                        'transfer' => $converted * $years,
+                        'renew'    => $converted * $years,
+                    ];
+                }
+            }
+        }
+
+        return $pricing;
     }
 }

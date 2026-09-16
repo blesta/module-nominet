@@ -17,6 +17,7 @@ $lang['Nominet.add_module_group'] = 'Add Accounts Group';
 $lang['Nominet.manage.module_rows_title'] = 'Accounts';
 
 $lang['Nominet.manage.module_rows_heading.username'] = 'Username';
+$lang['Nominet.manage.module_rows_heading.testbed'] = 'Testbed';
 $lang['Nominet.manage.module_rows_heading.options'] = 'Options';
 $lang['Nominet.manage.module_rows.edit'] = 'Edit';
 $lang['Nominet.manage.module_rows.delete'] = 'Delete';
@@ -36,6 +37,10 @@ $lang['Nominet.manage.module_groups.delete'] = 'Delete';
 $lang['Nominet.manage.module_groups.confirm_delete'] = 'Are you sure you want to delete this Account';
 
 $lang['Nominet.manage.module_groups.no_results'] = 'There is no Accounts Group';
+
+// Cron tasks
+$lang['Nominet.getCronTasks.check_pending_transfers_name'] = 'Check Pending .uk Transfers';
+$lang['Nominet.getCronTasks.check_pending_transfers_desc'] = 'Rechecks .uk domain transfers awaiting registrar re-tag confirmation and activates them once the tag change is confirmed by the registry.';
 
 
 // Options
@@ -57,18 +62,23 @@ $lang['Nominet.edit_row.edit_btn'] = 'Update Account';
 $lang['Nominet.row_meta.username'] = 'Username';
 $lang['Nominet.row_meta.password'] = 'Password';
 $lang['Nominet.row_meta.secure'] = 'Use Secure Connection';
-$lang['Nominet.row_meta.sandbox'] = 'Sandbox';
+$lang['Nominet.row_meta.testbed'] = 'Testbed';
+$lang['Nominet.row_meta.cost_price'] = 'Cost Price (GBP)';
 $lang['Nominet.row_meta.poll_enabled'] = 'Enable EPP Poll Queue Processing';
 
 
 // Errors
 $lang['Nominet.!error.module_row.missing'] = 'An internal error occurred. The module row is unavailable.';
 $lang['Nominet.!error.domain.valid'] = 'The given domain is invalid.';
+$lang['Nominet.!error.transfer.pending'] = 'The domain %1$s has not been re-tagged to our IPS tag yet. The current registrar must complete the re-tag before the transfer can be completed.'; // %1$s is the domain name
+$lang['Nominet.!error.transfer.timeout'] = 'The domain %1$s has not been re-tagged to our IPS tag within 14 days of the transfer request. Please contact the client to confirm the re-tag has been requested from their current registrar.'; // %1$s is the domain name
 $lang['Nominet.!error.ns1.valid'] = 'Invalid Name Server 1';
 $lang['Nominet.!error.ns2.valid'] = 'Invalid Name Server 2';
 $lang['Nominet.!error.ns3.valid'] = 'Invalid Name Server 3';
 $lang['Nominet.!error.ns4.valid'] = 'Invalid Name Server 4';
 $lang['Nominet.!error.ns5.valid'] = 'Invalid Name Server 5';
+$lang['Nominet.!error.cost_price.format'] = 'Cost price must be a valid non-negative number.';
+$lang['Nominet.!error.cost_price.currency'] = 'GBP must be an available currency with an exchange rate to sync pricing.';
 $lang['Nominet.!error.contact.first_name.empty'] = 'First name is required.';
 $lang['Nominet.!error.contact.last_name.empty'] = 'Last name is required.';
 $lang['Nominet.!error.contact.email.valid'] = 'A valid email address is required.';
