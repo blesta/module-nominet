@@ -157,6 +157,16 @@ class Nominet extends RegistrarModule
                 'type' => 'interval',
                 'type_value' => 1440,
                 'enabled' => 1
+            ],
+            [
+                'key' => 'process_poll',
+                'task_type' => 'module',
+                'dir' => 'nominet',
+                'name' => Language::_('Nominet.getCronTasks.process_poll_name', true),
+                'description' => Language::_('Nominet.getCronTasks.process_poll_desc', true),
+                'type' => 'interval',
+                'type_value' => 15,
+                'enabled' => 1
             ]
         ];
     }
@@ -169,6 +179,7 @@ class Nominet extends RegistrarModule
     private function addCronTasks(array $tasks)
     {
         Loader::loadModels($this, ['CronTasks']);
+        
         foreach ($tasks as $task) {
             $task_id = $this->CronTasks->add($task);
 
@@ -223,7 +234,7 @@ class Nominet extends RegistrarModule
                 continue;
             }
 
-            $row = $this->getModuleRow($service->module_row_id);
+            $row = $this->getModuleRowByIdOrFail($service->module_row_id);
             if (!$row) {
                 continue;
             }
@@ -911,7 +922,7 @@ class Nominet extends RegistrarModule
     ) {
         $is_transfer = $this->isTransfer((array) $vars);
 
-        if (($row = $this->getModuleRow())) {
+        if (($row = $this->getModuleRowByIdOrFail())) {
             // Validate service
             $this->validateService($package, $vars);
             if ($this->Input->errors()) {
@@ -1019,7 +1030,7 @@ class Nominet extends RegistrarModule
     {
         $service_fields = $this->serviceFieldsToObject($service->fields);
 
-        if (($row = $this->getModuleRow())) {
+        if (($row = $this->getModuleRowByIdOrFail())) {
             $this->validateService($package, $vars, true);
             if ($this->Input->errors()) {
                 return;
@@ -1082,7 +1093,7 @@ class Nominet extends RegistrarModule
      */
     public function renewService($package, $service, $parent_package = null, $parent_service = null)
     {
-        if (($row = $this->getModuleRowById($service->module_row_id ?? $package->module_row ?? null))) {
+        if (($row = $this->getModuleRowByIdOrFail($service->module_row_id ?? $package->module_row ?? null))) {
             // Get renew period
             $period = 1;
             $period_unit = 'year';
@@ -2065,7 +2076,7 @@ class Nominet extends RegistrarModule
         // .uk transfers are done via IPS tag change (re-tagging by the current registrar),
         // not standard EPP pull transfers. A domain is available for this process if it
         // is already registered (i.e., not available for new registration).
-        $row = $this->getModuleRow($module_row_id);
+        $row = $this->getModuleRowByIdOrFail($module_row_id);
         if (!$row) {
             return false;
         }
@@ -2418,12 +2429,8 @@ class Nominet extends RegistrarModule
         // re-tag is confirmed by a live domain:info lookup - never assume it happened just
         // because the transfer was requested, otherwise the service gets provisioned (and
         // billed as active) for a domain the customer may not yet control.
-        $row = $this->getModuleRow($module_row_id);
+        $row = $this->getModuleRowByIdOrFail($module_row_id);
         if (!$row) {
-            $this->Input->setErrors(
-                ['module_row' => ['missing' => Language::_('Nominet.!error.module_row.missing', true)]]
-            );
-
             return false;
         }
 
@@ -3663,68 +3670,6 @@ class Nominet extends RegistrarModule
     }
 
     /**
-     * Returns the cron task definitions for this module.
-     *
-     * @return array An array of cron task definitions
-     */
-    private function getCronTasks()
-    {
-        return [
-            [
-                'key' => 'process_poll',
-                'task_type' => 'module',
-                'dir' => 'nominet',
-                'name' => Language::_('Nominet.getCronTasks.process_poll_name', true),
-                'description' => Language::_('Nominet.getCronTasks.process_poll_desc', true),
-                'type' => 'interval',
-                'type_value' => 15,
-                'enabled' => 1
-            ]
-        ];
-    }
-
-    /**
-     * Registers cron tasks with Blesta's CronTasks model.
-     *
-     * @param array $tasks An array of cron task definitions
-     */
-    private function addCronTasks(array $tasks)
-    {
-        Loader::loadModels($this, ['CronTasks']);
-
-        foreach ($tasks as $task) {
-            $task_id = $this->CronTasks->add($task);
-
-            if (!$task_id) {
-                $cron_task = $this->CronTasks->getByKey($task['key'], $task['dir'], $task['task_type']);
-                if ($cron_task) {
-                    $task_id = $cron_task->id;
-                }
-            }
-
-            if ($task_id) {
-                // CronTasks::addTaskRun() inserts without any uniqueness check, so adding a
-                // run for a task that already has one silently duplicates it and the task
-                // then runs twice per interval. Only add a run if none exists yet - this
-                // matters when re-registering a task an earlier version already installed.
-                $existing_run = $this->CronTasks
-                    ->getTaskRunByKey($task['key'], $task['dir'], false, $task['task_type']);
-
-                if (!$existing_run) {
-                    $task_vars = ['enabled' => $task['enabled']];
-                    if ($task['type'] === 'time') {
-                        $task_vars['time'] = $task['type_value'];
-                    } else {
-                        $task_vars['interval'] = $task['type_value'];
-                    }
-
-                    $this->CronTasks->addTaskRun($task_id, $task_vars);
-                }
-            }
-        }
-    }
-
-    /**
      * Parses Nominet contact extension data (type, trad-name, co-no) from
      * an EPP contact:info response.
      *
@@ -3866,6 +3811,13 @@ class Nominet extends RegistrarModule
                 Loader::loadModels($this, ['ModuleManager']);
             }
             $row = $this->ModuleManager->getRow($module_row_id);
+
+            // ModuleManager::getRow() fetches any row of any module for any company, so
+            // run the ownership check the base class could not: the row must belong to a
+            // Nominet module installed for the company in use
+            if ($row && !$this->isOwnedByCompany($row)) {
+                $row = false;
+            }
         }
 
         // A specific row ID was requested but could not be resolved: do not silently
@@ -3885,6 +3837,27 @@ class Nominet extends RegistrarModule
         }
 
         return $row;
+    }
+
+    /**
+     * Determines whether the given module row belongs to a Nominet module installed
+     * for the company currently in use.
+     *
+     * @param stdClass $row The module row to check
+     * @return bool True if the row belongs to this module and company
+     */
+    private function isOwnedByCompany($row)
+    {
+        if (!isset($this->ModuleManager)) {
+            Loader::loadModels($this, ['ModuleManager']);
+        }
+
+        $module = $this->ModuleManager->get($row->module_id ?? null, false, false);
+        $company_id = $this->module->company_id ?? Configure::get('Blesta.company_id');
+
+        return $module
+            && $module->class == ($this->module->class ?? Loader::fromCamelCase(get_class($this)))
+            && $module->company_id == $company_id;
     }
 
     /**
@@ -4023,12 +3996,7 @@ class Nominet extends RegistrarModule
     public function getFilteredTldPricing($module_row_id = null, $filters = [])
     {
         // Get cost_price from the specified row, or the first available row
-        if ($module_row_id !== null) {
-            $row = $this->getModuleRow($module_row_id);
-        } else {
-            $rows = $this->getModuleRows();
-            $row = $rows[0] ?? null;
-        }
+        $row = $this->getModuleRowByIdOrFail($module_row_id);
 
         if ($row === null) {
             return [];
