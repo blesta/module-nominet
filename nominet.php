@@ -2391,7 +2391,7 @@ class Nominet extends RegistrarModule
         if (!$row) {
             return false;
         }
-        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->sandbox);
+        $api = $this->getApi($row->meta->username, $row->meta->password, $row->meta->secure, $row->meta->testbed);
 
         $this->log($row->meta->username . '|eppDeleteDomainRequest', json_encode(compact('domain')), 'input', true);
 
@@ -3906,7 +3906,7 @@ class Nominet extends RegistrarModule
         // Key the connection cache by environment + username, not username alone, so
         // the same username configured for both live and testbed doesn't reuse
         // whichever connection happened to be opened first.
-        $env = $sandbox == 'true' ? 'sandbox' : 'live';
+        $env = $testbed == 'true' ? 'testbed' : 'live';
         $cache_key = $env . ':' . $username;
 
         // Return cached connection if available
